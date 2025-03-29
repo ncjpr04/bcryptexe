@@ -222,9 +222,9 @@ export default function DashboardPage() {
                           <h3 className="text-sm font-medium text-muted-foreground">Active Time</h3>
                           <Timer className="h-4 w-4 text-primary/70" />
                         </div>
-                        <div className="text-2xl font-bold">{Math.floor(fitnessData.activeMinutes)} min</div>
+                        <div className="text-2xl font-bold">{Math.round(fitnessData.activeMinutes)} min</div>
                         <p className="text-xs text-muted-foreground mt-1">Goal: 30 minutes</p>
-                        <Progress value={(Math.min(fitnessData.activeMinutes, 30) / 30) * 100} className="mt-2 h-1.5" />
+                        <Progress value={(fitnessData.activeMinutes / 30) * 100} className="mt-2 h-1.5" />
                       </div>
                       
                       <div className="bg-background rounded-lg p-4 shadow-sm border">
