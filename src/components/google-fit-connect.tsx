@@ -25,14 +25,14 @@ export function GoogleFitConnect() {
       variant={isConnected ? "destructive" : "outline"}
       onClick={handleClick}
       disabled={isLoading}
-      size="sm"
+      className="w-full"
     >
       {isLoading ? (
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       ) : (
         <FcGoogle className="mr-2 h-4 w-4" />
       )}
-      {isConnected ? "Disconnect Fit" : "Connect Fit"}
+      {isConnected ? "Disconnect Google Fit" : "Connect Google Fit"}
     </Button>
   )
 } 

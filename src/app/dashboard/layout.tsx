@@ -5,13 +5,14 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { usePathname } from "next/navigation"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { Loader } from "@/components/ui/loader"
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import Link from "next/link"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/contexts/AuthContext"
 import { Suspense, useEffect, useState } from "react"
+import { WalletProvider } from "@/contexts/WalletContext"
+import { WalletButton } from "@/components/wallet/wallet-button"
 
 // Memoize the header to prevent unnecessary re-renders
 const DashboardHeader = React.memo(function DashboardHeader() {
@@ -55,7 +56,7 @@ const DashboardHeader = React.memo(function DashboardHeader() {
         </div>
         <div className="flex items-center space-x-4">
           <ThemeToggle />
-          <WalletMultiButton />
+          <WalletButton />
         </div>
       </div>
     </div>
@@ -72,12 +73,10 @@ export default function DashboardLayout({
   
   // Simple check for authentication without redirects
   useEffect(() => {
-    // Add a timeout to ensure rendering happens even if there's a temporary state issue
     const timer = setTimeout(() => {
       setIsReady(true)
-    }, 1000) // 1 second timeout as fallback
+    }, 1000)
     
-    // Still try to respond to the isLoading state change if it happens quickly
     if (!isLoading && user) {
       setIsReady(true)
       clearTimeout(timer)
@@ -86,7 +85,6 @@ export default function DashboardLayout({
     return () => clearTimeout(timer)
   }, [isLoading, user])
   
-  // Show loading state during auth check
   if ((isLoading || !isReady) && !user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -95,29 +93,29 @@ export default function DashboardLayout({
     )
   }
   
-  // Redirect is handled at the page level or via middleware
   if (!user) {
     return null
   }
 
-  // Once we have a user, render the dashboard regardless of other states
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen">
-        <AppSidebar className="w-64 shrink-0" />
-        <div className="flex-1 flex flex-col min-w-0">
-          <DashboardHeader />
-          <main className="flex-1 overflow-y-auto p-6">
-            <Suspense fallback={
-              <div className="flex items-center justify-center h-full">
-                <Loader size="default" />
-              </div>
-            }>
-              {children}
-            </Suspense>
-          </main>
+    <WalletProvider>
+      <SidebarProvider>
+        <div className="flex w-full">
+          <AppSidebar className="w-64 shrink-0" />
+          <div className="flex-1 flex flex-col w-full">
+            <DashboardHeader />
+            <main className="flex-1 overflow-y-auto p-6">
+              <Suspense fallback={
+                <div className="flex items-center justify-center h-full">
+                  <Loader size="default" />
+                </div>
+              }>
+                {children}
+              </Suspense>
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </WalletProvider>
   )
 } 

@@ -26,22 +26,23 @@ export function GoogleFitProviderContent({ children }: { children: React.ReactNo
     scope: [
       'https://www.googleapis.com/auth/fitness.activity.read',
       'https://www.googleapis.com/auth/fitness.body.read',
-      'https://www.googleapis.com/auth/fitness.heart_rate.read'
+      'https://www.googleapis.com/auth/fitness.heart_rate.read',
+      'https://www.googleapis.com/auth/fitness.location.read'
     ].join(' '),
     onSuccess: async (tokenResponse) => {
       try {
-        // Set token right away for immediate use
         googleFit.setAccessToken(tokenResponse.access_token)
         setIsConnected(true)
         
-        // Update database in the background
         if (user) {
-          database.updateUserProfile(user.id, {
-            googleFitToken: tokenResponse.access_token
-          }).catch(error => {
-            console.error('Failed to update user profile with Google Fit token:', error)
-            // Don't block the UI for database errors
-          })
+          try {
+            await database.updateUserProfile(user.id, {
+              googleFitToken: tokenResponse.access_token
+            })
+          } catch (error) {
+            console.error('Failed to update user profile:', error)
+            // Don't block the UI or show error for database issues
+          }
         }
         
         toast.success('Successfully connected to Google Fit')
@@ -81,7 +82,6 @@ export function GoogleFitProviderContent({ children }: { children: React.ReactNo
           googleFitToken: null
         }).catch(error => {
           console.error('Failed to update user profile:', error)
-          // Don't block the UI for database errors
         })
       }
       

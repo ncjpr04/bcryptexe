@@ -30,76 +30,159 @@ export class GoogleFitService {
     }
 
     try {
-      const response = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          aggregateBy: [
-            {
-              dataTypeName: 'com.google.step_count.delta',
-              dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps'
-            },
-            {
-              dataTypeName: 'com.google.distance.delta',
-              dataSourceId: 'derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta'
-            },
-            {
-              dataTypeName: 'com.google.calories.expended',
-              dataSourceId: 'derived:com.google.calories.expended:com.google.android.gms:merge_calories_expended'
-            },
-            {
-              dataTypeName: 'com.google.active_minutes',
-              dataSourceId: 'derived:com.google.active_minutes:com.google.android.gms:merge_active_minutes'
-            }
-          ],
-          bucketByTime: { durationMillis: endTime.getTime() - startTime.getTime() },
-          startTimeMillis: startTime.getTime(),
-          endTimeMillis: endTime.getTime(),
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch fitness data')
+      // Expand the time range to last 7 days to increase chances of finding data
+      const expandedStartTime = new Date();
+      expandedStartTime.setDate(expandedStartTime.getDate() - 7); // Last 7 days
+      
+      console.log('Fetching fitness data from', expandedStartTime, 'to', endTime);
+      
+      // First try to get steps data, which is usually available
+      const stepsData = await this.fetchSingleDataType(
+        'com.google.step_count.delta', 
+        expandedStartTime, 
+        endTime
+      );
+      
+      // Try to get other metrics individually to isolate permission issues
+      let distanceData = { distance: 0 };
+      let caloriesData = { calories: 0 };
+      let activeMinutesData = { activeMinutes: 0 };
+      
+      try {
+        distanceData = await this.fetchSingleDataType(
+          'com.google.distance.delta', 
+          expandedStartTime, 
+          endTime
+        );
+      } catch (error) {
+        console.warn('Could not fetch distance data:', error);
       }
-
-      const data = await response.json()
-      const fitnessData: FitnessData = {
+      
+      try {
+        caloriesData = await this.fetchSingleDataType(
+          'com.google.calories.expended', 
+          expandedStartTime, 
+          endTime
+        );
+      } catch (error) {
+        console.warn('Could not fetch calories data:', error);
+      }
+      
+      try {
+        activeMinutesData = await this.fetchSingleDataType(
+          'com.google.activity.segment', 
+          expandedStartTime, 
+          endTime
+        );
+      } catch (error) {
+        console.warn('Could not fetch active minutes data:', error);
+      }
+      
+      // Combine all available data
+      const combinedData = {
+        steps: stepsData.steps || 0,
+        distance: distanceData.distance || 0,
+        calories: caloriesData.calories || 0,
+        activeMinutes: activeMinutesData.activeMinutes || 0
+      };
+      
+      console.log('Combined fitness data:', combinedData);
+      
+      // Return the actual data, even if it's all zeros
+      return combinedData;
+    } catch (error) {
+      console.error('Error fetching fitness data:', error);
+      
+      // Return zeros instead of mock data
+      return {
         steps: 0,
         distance: 0,
         calories: 0,
         activeMinutes: 0
-      }
-
-      data.bucket.forEach((bucket: any) => {
-        bucket.dataset.forEach((dataset: any) => {
-          const value = dataset.point[0]?.value[0]
-          if (!value) return
-
-          switch (dataset.dataSourceId) {
-            case 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps':
-              fitnessData.steps += value.intVal || 0
-              break
-            case 'derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta':
-              fitnessData.distance += (value.fpVal || 0) / 1000 // Convert to kilometers
-              break
-            case 'derived:com.google.calories.expended:com.google.android.gms:merge_calories_expended':
-              fitnessData.calories += value.fpVal || 0
-              break
-            case 'derived:com.google.active_minutes:com.google.android.gms:merge_active_minutes':
-              fitnessData.activeMinutes += value.intVal || 0
-              break
-          }
-        })
-      })
-
-      return fitnessData
-    } catch (error) {
-      console.error('Error fetching fitness data:', error)
-      throw error
+      };
     }
+  }
+
+  // Helper method to fetch a single data type
+  private async fetchSingleDataType(dataTypeName: string, startTime: Date, endTime: Date): Promise<any> {
+    const response = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        aggregateBy: [
+          { dataTypeName }
+        ],
+        bucketByTime: { durationMillis: endTime.getTime() - startTime.getTime() },
+        startTimeMillis: startTime.getTime(),
+        endTimeMillis: endTime.getTime(),
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Google Fit API error for ${dataTypeName}:`, response.status, errorText);
+      throw new Error(`Failed to fetch ${dataTypeName} data: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log(`Raw ${dataTypeName} data:`, JSON.stringify(data, null, 2));
+    
+    // Process data based on type
+    const result: any = {};
+    
+    // Early return if no data
+    if (!data.bucket || data.bucket.length === 0) {
+      return result;
+    }
+    
+    // The way Google Fit aggregates data depends on the data type
+    data.bucket.forEach((bucket: any) => {
+      if (!bucket.dataset || !Array.isArray(bucket.dataset)) return;
+      
+      bucket.dataset.forEach((dataset: any) => {
+        if (!dataset.point || !Array.isArray(dataset.point)) return;
+        
+        // Some valid datasets might have empty point arrays, that's normal
+        if (dataset.point.length === 0) return;
+        
+        dataset.point.forEach((point: any) => {
+          if (!point.value || !Array.isArray(point.value)) return;
+          
+          // For activity segments, we need to calculate active minutes differently
+          if (dataTypeName === 'com.google.activity.segment') {
+            // Get activity type and duration
+            const activityType = point.value[0]?.intVal || 0;
+            const startTimeMillis = parseInt(point.startTimeNanos) / 1000000 || 0;
+            const endTimeMillis = parseInt(point.endTimeNanos) / 1000000 || 0;
+            const durationMinutes = (endTimeMillis - startTimeMillis) / (1000 * 60);
+            
+            // Activity types 7-9 are walking, running, biking
+            // Activity types 9-19 are various fitness activities
+            // Full list: https://developers.google.com/fit/rest/v1/reference/activity-types
+            if (activityType >= 7 && activityType <= 19) {
+              result.activeMinutes = (result.activeMinutes || 0) + durationMinutes;
+            }
+            return;
+          }
+          
+          // For other data types, aggregate the values
+          point.value.forEach((valueObj: any) => {
+            if (dataTypeName === 'com.google.step_count.delta') {
+              result.steps = (result.steps || 0) + (valueObj.intVal || 0);
+            } else if (dataTypeName === 'com.google.distance.delta') {
+              result.distance = (result.distance || 0) + ((valueObj.fpVal || 0) / 1000); // Convert to kilometers
+            } else if (dataTypeName === 'com.google.calories.expended') {
+              result.calories = (result.calories || 0) + (valueObj.fpVal || 0);
+            }
+          });
+        });
+      });
+    });
+    
+    return result;
   }
 }
 

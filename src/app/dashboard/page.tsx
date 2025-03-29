@@ -41,16 +41,40 @@ export default function DashboardPage() {
   });
   const [activeChallenges, setActiveChallenges] = useState<Challenge[]>([]);
 
-  // Only fetch fitness data when explicitly connected
-  useEffect(() => {
-    if (isConnected && !fitnessDataLoaded) {
-      fetchFitnessData();
+  // Only fetch fitness data after explicit connection AND when user clicks to fetch data
+  const fetchFitnessData = async () => {
+    if (!isConnected) {
+      toast.error('Please connect to Google Fit first');
+      return;
     }
-  }, [isConnected, fitnessDataLoaded]);
+    
+    setFetchingData(true);
+    try {
+      const endTime = new Date();
+      const startTime = new Date();
+      startTime.setDate(startTime.getDate() - 7); // Get data from the last 7 days
+      
+      const data = await getFitnessData(startTime, endTime);
+      console.log('Fitness data from API:', data);
+      
+      // Use exactly what the API returns
+      setFitnessData(data);
+      setFitnessDataLoaded(true);
+      
+      toast.success('Fitness data updated', {
+        description: 'Your latest fitness data has been loaded'
+      });
+    } catch (error) {
+      console.error('Error fetching fitness data:', error);
+      toast.error('Failed to fetch fitness data');
+    } finally {
+      setFetchingData(false);
+    }
+  };
 
-  // Set up mock challenges
+  // Update challenges based on fitness data
   useEffect(() => {
-    if (user) {
+    if (fitnessDataLoaded) {
       setActiveChallenges([
         {
           id: '1',
@@ -72,30 +96,7 @@ export default function DashboardPage() {
         }
       ]);
     }
-  }, [user, fitnessData]);
-
-  const fetchFitnessData = async () => {
-    if (!isConnected) return;
-    
-    setFetchingData(true);
-    try {
-      const endTime = new Date();
-      const startTime = new Date();
-      startTime.setHours(0, 0, 0, 0); // Start of today
-
-      const data = await getFitnessData(startTime, endTime);
-      setFitnessData(data);
-      setFitnessDataLoaded(true);
-      toast.success('Fitness data updated', {
-        description: 'Your latest fitness data has been loaded'
-      });
-    } catch (error) {
-      console.error('Error fetching fitness data:', error);
-      toast.error('Failed to fetch fitness data');
-    } finally {
-      setFetchingData(false);
-    }
-  };
+  }, [fitnessData, fitnessDataLoaded]);
 
   const handleConnectGoogleFit = async () => {
     try {
@@ -110,25 +111,40 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {!isConnected ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Connect to Google Fit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Connect your Google Fit account to track your fitness progress and participate in challenges.
-            </p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Fitness Tracking</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground mb-4">
+            {isConnected 
+              ? "Your Google Fit account is connected. You can now view your fitness data."
+              : "Connect your Google Fit account to track your fitness progress and participate in challenges."}
+          </p>
+          
+          {!isConnected ? (
             <Button 
               onClick={handleConnectGoogleFit} 
-              className="w-full"
               disabled={isGoogleFitLoading}
+              className="w-full"
             >
               {isGoogleFitLoading ? 'Connecting...' : 'Connect Google Fit'}
             </Button>
-          </CardContent>
-        </Card>
-      ) : (
+          ) : (
+            <div className="flex gap-4">
+              <Button 
+                onClick={fetchFitnessData}
+                disabled={fetchingData}
+                className="flex-1"
+              >
+                {fetchingData ? 'Loading Data...' : fitnessDataLoaded ? 'Refresh Fitness Data' : 'Load Fitness Data'}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {isConnected && fitnessDataLoaded && (
         <>
           {/* Fitness Stats */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -176,18 +192,6 @@ export default function DashboardPage() {
                 <Progress value={(fitnessData.calories / 2000) * 100} className="mt-2" />
               </CardContent>
             </Card>
-          </div>
-
-          {/* Refresh button and loading state */}
-          <div className="flex justify-end">
-            <Button 
-              variant="outline" 
-              onClick={fetchFitnessData}
-              disabled={fetchingData}
-              size="sm"
-            >
-              {fetchingData ? 'Refreshing...' : 'Refresh Fitness Data'}
-            </Button>
           </div>
 
           {/* Active Challenges */}
