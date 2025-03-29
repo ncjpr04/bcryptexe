@@ -1,9 +1,11 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState } from 'react'
-import { GoogleFitService } from '@/lib/googleFit'
+import React, { createContext, useContext, useState, useCallback } from 'react'
+import { useGoogleLogin } from '@react-oauth/google'
+import { googleFit } from '@/lib/googleFit'
 import { useAuth } from './AuthContext'
 import { database } from '@/lib/database'
+import { toast } from 'sonner'
 
 interface GoogleFitContextType {
   isConnected: boolean
@@ -15,77 +17,91 @@ interface GoogleFitContextType {
 
 const GoogleFitContext = createContext<GoogleFitContextType | undefined>(undefined)
 
-export function GoogleFitProvider({ children }: { children: React.ReactNode }) {
+export function GoogleFitProviderContent({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const { user } = useAuth()
-  const googleFit = GoogleFitService.getInstance()
 
-  useEffect(() => {
-    const initializeGoogleFit = async () => {
-      if (user) {
-        try {
-          await googleFit.initialize()
-          setIsConnected(googleFit.isSignedIn())
-        } catch (error) {
-          console.error('Error initializing Google Fit:', error)
-        } finally {
-          setIsLoading(false)
+  const login = useGoogleLogin({
+    scope: [
+      'https://www.googleapis.com/auth/fitness.activity.read',
+      'https://www.googleapis.com/auth/fitness.body.read',
+      'https://www.googleapis.com/auth/fitness.heart_rate.read'
+    ].join(' '),
+    onSuccess: async (tokenResponse) => {
+      try {
+        // Set token right away for immediate use
+        googleFit.setAccessToken(tokenResponse.access_token)
+        setIsConnected(true)
+        
+        // Update database in the background
+        if (user) {
+          database.updateUserProfile(user.id, {
+            googleFitToken: tokenResponse.access_token
+          }).catch(error => {
+            console.error('Failed to update user profile with Google Fit token:', error)
+            // Don't block the UI for database errors
+          })
         }
+        
+        toast.success('Successfully connected to Google Fit')
+      } catch (error) {
+        console.error('Error connecting to Google Fit:', error)
+        toast.error('Failed to connect to Google Fit')
       }
+    },
+    onError: (error) => {
+      console.error('Google Fit login error:', error)
+      toast.error('Failed to connect to Google Fit')
     }
-
-    initializeGoogleFit()
-  }, [user])
+  })
 
   const connectGoogleFit = async () => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      await googleFit.signIn()
-      setIsConnected(true)
-      
-      // Update user profile with Google Fit connection status
-      if (user) {
-        await database.updateUserProfile(user.uid, {
-          isGoogleFitConnected: true
-        })
-      }
+      login()
+      // The login function handles success/error via callbacks
     } catch (error) {
       console.error('Error connecting to Google Fit:', error)
-      throw error
-    } finally {
+      toast.error('Failed to connect to Google Fit')
       setIsLoading(false)
     }
   }
 
   const disconnectGoogleFit = async () => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      await googleFit.signOut()
+      // Update UI state immediately
+      googleFit.setAccessToken(null)
       setIsConnected(false)
       
-      // Update user profile with Google Fit connection status
+      // Update database in the background
       if (user) {
-        await database.updateUserProfile(user.uid, {
-          isGoogleFitConnected: false
+        database.updateUserProfile(user.id, {
+          googleFitToken: null
+        }).catch(error => {
+          console.error('Failed to update user profile:', error)
+          // Don't block the UI for database errors
         })
       }
+      
+      toast.success('Disconnected from Google Fit')
     } catch (error) {
       console.error('Error disconnecting from Google Fit:', error)
-      throw error
+      toast.error('Failed to disconnect from Google Fit')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const getFitnessData = async (startTime: Date, endTime: Date) => {
+  const getFitnessData = useCallback(async (startTime: Date, endTime: Date) => {
     try {
       return await googleFit.getFitnessData(startTime, endTime)
     } catch (error) {
       console.error('Error fetching fitness data:', error)
       throw error
     }
-  }
+  }, [])
 
   return (
     <GoogleFitContext.Provider
@@ -100,6 +116,10 @@ export function GoogleFitProvider({ children }: { children: React.ReactNode }) {
       {children}
     </GoogleFitContext.Provider>
   )
+}
+
+export function GoogleFitProvider({ children }: { children: React.ReactNode }) {
+  return <GoogleFitProviderContent>{children}</GoogleFitProviderContent>
 }
 
 export function useGoogleFit() {

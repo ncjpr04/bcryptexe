@@ -3,38 +3,36 @@
 import { Button } from "@/components/ui/button"
 import { useGoogleFit } from "@/contexts/GoogleFitContext"
 import { FcGoogle } from "react-icons/fc"
-import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
 
 export function GoogleFitConnect() {
   const { isConnected, connectGoogleFit, disconnectGoogleFit, isLoading } = useGoogleFit()
 
-  const handleConnect = async () => {
+  const handleClick = async () => {
     try {
-      await connectGoogleFit()
-      toast.success('Successfully connected to Google Fit')
+      if (isConnected) {
+        await disconnectGoogleFit()
+      } else {
+        await connectGoogleFit()
+      }
     } catch (error) {
-      toast.error('Failed to connect to Google Fit')
-    }
-  }
-
-  const handleDisconnect = async () => {
-    try {
-      await disconnectGoogleFit()
-      toast.success('Successfully disconnected from Google Fit')
-    } catch (error) {
-      toast.error('Failed to disconnect from Google Fit')
+      console.error('Error handling Google Fit connection:', error)
     }
   }
 
   return (
     <Button
       variant={isConnected ? "destructive" : "outline"}
-      onClick={isConnected ? handleDisconnect : handleConnect}
+      onClick={handleClick}
       disabled={isLoading}
-      className="w-full"
+      size="sm"
     >
-      <FcGoogle className="mr-2 h-4 w-4" />
-      {isConnected ? "Disconnect Google Fit" : "Connect Google Fit"}
+      {isLoading ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      ) : (
+        <FcGoogle className="mr-2 h-4 w-4" />
+      )}
+      {isConnected ? "Disconnect Fit" : "Connect Fit"}
     </Button>
   )
 } 

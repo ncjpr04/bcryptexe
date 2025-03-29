@@ -1,7 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getAnalytics } from 'firebase/analytics';
+import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 
 // Ensure we're on the client side
@@ -41,39 +38,20 @@ if (typeof window !== 'undefined') {
 }
 
 let app;
-let auth;
-let firestore;
-let realtimeDb;
-let analytics;
+let database;
 
 if (typeof window !== 'undefined') {
   try {
     // Initialize Firebase
-    app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    
-    // Initialize Auth
-    auth = getAuth(app);
-    
-    // Initialize Firestore
-    firestore = getFirestore(app);
+    app = initializeApp(firebaseConfig);
     
     // Initialize Realtime Database
-    realtimeDb = getDatabase(app);
+    database = getDatabase(app);
     
-    // Initialize Analytics only in production
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        analytics = getAnalytics(app);
-        console.log('Firebase Analytics initialized');
-      } catch (error) {
-        console.warn('Firebase Analytics initialization skipped:', error);
-      }
-    }
-    
-    console.log('Firebase initialized successfully on client side');
+    console.log('Firebase initialized with database URL:', process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL);
   } catch (error) {
     console.error('Firebase initialization error:', error);
   }
 }
 
-export { app, auth, firestore, realtimeDb, analytics }; 
+export { app, database }; 

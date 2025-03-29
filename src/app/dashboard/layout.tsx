@@ -2,19 +2,18 @@
 
 import * as React from "react"
 import { AppSidebar } from "@/components/app-sidebar"
-import { useAuth } from "@/contexts/AuthContext"
-import { useRouter, usePathname } from "next/navigation"
-import { useEffect } from "react"
-import { Suspense } from "react"
+import { usePathname } from "next/navigation"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { Loader } from "@/components/ui/loader"
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import Link from "next/link"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useAuth } from "@/contexts/AuthContext"
+import { Suspense, useEffect, useState } from "react"
 
-// Create a Header component
+// Memoize the header to prevent unnecessary re-renders
 const DashboardHeader = React.memo(function DashboardHeader() {
   const pathname = usePathname()
   
@@ -63,70 +62,62 @@ const DashboardHeader = React.memo(function DashboardHeader() {
   )
 })
 
-// Create a memoized content wrapper
-const DashboardContent = React.memo(function DashboardContent({
-  children
-}: {
-  children: React.ReactNode
-}) {
-  const pathname = usePathname()
-
-  return (
-    <main className="flex-1 overflow-y-auto p-6">
-      <Suspense 
-        key={pathname}
-        fallback={
-          <div className="flex items-center justify-center h-full">
-            <Loader size="default" />
-          </div>
-        }
-      >
-        {children}
-      </Suspense>
-    </main>
-  )
-})
-
-function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   const { user, isLoading } = useAuth()
-  const router = useRouter()
-  const pathname = usePathname()
-
+  const [isReady, setIsReady] = useState(false)
+  
+  // Simple check for authentication without redirects
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/signin')
+    // Add a timeout to ensure rendering happens even if there's a temporary state issue
+    const timer = setTimeout(() => {
+      setIsReady(true)
+    }, 1000) // 1 second timeout as fallback
+    
+    // Still try to respond to the isLoading state change if it happens quickly
+    if (!isLoading && user) {
+      setIsReady(true)
+      clearTimeout(timer)
     }
-  }, [user, isLoading, router])
-
-  if (isLoading) {
+    
+    return () => clearTimeout(timer)
+  }, [isLoading, user])
+  
+  // Show loading state during auth check
+  if ((isLoading || !isReady) && !user) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader size="lg" text="Loading..." />
+        <Loader size="lg" text="Loading dashboard..." />
       </div>
     )
   }
-
+  
+  // Redirect is handled at the page level or via middleware
   if (!user) {
     return null
   }
 
+  // Once we have a user, render the dashboard regardless of other states
   return (
     <SidebarProvider>
-      {/* <div className="flex min-h-screen w-[100%]"> */}
+      <div className="flex min-h-screen">
         <AppSidebar className="w-64 shrink-0" />
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           <DashboardHeader />
-          <DashboardContent key={pathname}>
-            {children}
-          </DashboardContent>
+          <main className="flex-1 overflow-y-auto p-6">
+            <Suspense fallback={
+              <div className="flex items-center justify-center h-full">
+                <Loader size="default" />
+              </div>
+            }>
+              {children}
+            </Suspense>
+          </main>
         </div>
-      {/* </div> */}
+      </div>
     </SidebarProvider>
   )
-}
-
-export default DashboardLayout 
+} 

@@ -2,20 +2,17 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const authCookie = request.cookies.get('auth');
-  const isAuthPage = request.nextUrl.pathname.startsWith('/signin') || 
-                    request.nextUrl.pathname.startsWith('/signup');
-  const isDashboardPage = request.nextUrl.pathname.startsWith('/dashboard');
+  const userCookie = request.cookies.get('user');
+  const isAuthenticated = !!userCookie;
+  const path = request.nextUrl.pathname;
 
   // If user is not authenticated and trying to access dashboard
-  if (!authCookie && isDashboardPage) {
-    const signInUrl = new URL('/signin', request.url);
-    signInUrl.searchParams.set('from', request.nextUrl.pathname);
-    return NextResponse.redirect(signInUrl);
+  if (!isAuthenticated && path.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/signin', request.url));
   }
 
-  // If user is authenticated and trying to access auth pages
-  if (authCookie && isAuthPage) {
+  // If user is authenticated and trying to access signin page
+  if (isAuthenticated && (path === '/signin' || path === '/')) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
@@ -23,5 +20,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/signin', '/signup'],
+  matcher: ['/dashboard/:path*', '/signin', '/']
 }; 

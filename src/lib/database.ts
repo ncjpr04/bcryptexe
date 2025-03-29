@@ -1,18 +1,16 @@
-import { ref, set, get, update, remove, push, query, orderByChild, equalTo } from 'firebase/database';
-import { realtimeDb } from './firebase';
+import { getDatabase, ref, set, get, update, remove, push, query, orderByChild, equalTo, increment as firebaseIncrement } from 'firebase/database';
+import { app } from './firebase';
+
+const db = getDatabase(app);
 
 export interface UserProfile {
-  uid: string;
+  id: string;
+  name: string;
   email: string;
-  displayName?: string;
-  photoURL?: string;
+  picture: string;
+  googleFitToken?: string | null;
   createdAt: number;
-  lastLogin: number;
-  stats: {
-    challengesCompleted: number;
-    totalPoints: number;
-    streak: number;
-  };
+  updatedAt: number;
 }
 
 export interface Challenge {
@@ -56,42 +54,50 @@ export interface UserAchievement {
   unlockedAt: number;
 }
 
-export class DatabaseService {
-  private db = realtimeDb;
-
-  // User Profile Operations
-  async createUserProfile(userId: string, email: string, displayName?: string, photoURL?: string): Promise<void> {
-    const userRef = ref(this.db, `users/${userId}`);
-    const userProfile: UserProfile = {
-      uid: userId,
-      email,
-      displayName,
-      photoURL,
-      createdAt: Date.now(),
-      lastLogin: Date.now(),
-      stats: {
-        challengesCompleted: 0,
-        totalPoints: 0,
-        streak: 0,
-      },
-    };
-    await set(userRef, userProfile);
+class DatabaseService {
+  async createUserProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
+    try {
+      console.log('Creating user profile for:', userId);
+      const now = Date.now();
+      await set(ref(db, `users/${userId}`), {
+        ...data,
+        createdAt: now,
+        updatedAt: now
+      });
+    } catch (error) {
+      console.error('Error creating user profile:', error);
+      throw error;
+    }
   }
 
   async getUserProfile(userId: string): Promise<UserProfile | null> {
-    const userRef = ref(this.db, `users/${userId}`);
-    const snapshot = await get(userRef);
-    return snapshot.val();
+    try {
+      console.log('Getting user profile for:', userId);
+      const snapshot = await get(ref(db, `users/${userId}`));
+      return snapshot.exists() ? snapshot.val() : null;
+    } catch (error) {
+      console.error('Error getting user profile:', error);
+      throw error;
+    }
   }
 
-  async updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<void> {
-    const userRef = ref(this.db, `users/${userId}`);
-    await update(userRef, updates);
+  async updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
+    try {
+      console.log('Updating user profile for:', userId, 'with data:', data);
+      const updates = {
+        ...data,
+        updatedAt: Date.now()
+      };
+      await update(ref(db, `users/${userId}`), updates);
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      throw error;
+    }
   }
 
   // Challenge Operations
   async createChallenge(challenge: Omit<Challenge, 'id'>): Promise<string> {
-    const challengesRef = ref(this.db, 'challenges');
+    const challengesRef = ref(db, 'challenges');
     const newChallengeRef = push(challengesRef);
     const challengeWithId = {
       ...challenge,
@@ -102,7 +108,7 @@ export class DatabaseService {
   }
 
   async getChallenges(type?: Challenge['type']): Promise<Challenge[]> {
-    const challengesRef = ref(this.db, 'challenges');
+    const challengesRef = ref(db, 'challenges');
     let challengesQuery = challengesRef;
     
     if (type) {
@@ -118,7 +124,7 @@ export class DatabaseService {
   }
 
   async getUserChallenges(userId: string): Promise<UserChallenge[]> {
-    const userChallengesRef = ref(this.db, `userChallenges/${userId}`);
+    const userChallengesRef = ref(db, `userChallenges/${userId}`);
     const snapshot = await get(userChallengesRef);
     const challenges: UserChallenge[] = [];
     snapshot.forEach((childSnapshot) => {
@@ -128,29 +134,39 @@ export class DatabaseService {
   }
 
   async updateChallengeProgress(userId: string, challengeId: string, progress: number): Promise<void> {
-    const userChallengeRef = ref(this.db, `userChallenges/${userId}/${challengeId}`);
+    const userChallengeRef = ref(db, `userChallenges/${userId}/${challengeId}`);
     await update(userChallengeRef, { progress });
   }
 
   async completeChallenge(userId: string, challengeId: string): Promise<void> {
-    const userChallengeRef = ref(this.db, `userChallenges/${userId}/${challengeId}`);
+    // First get the challenge details to get the points
+    const challengeRef = ref(db, `challenges/${challengeId}`);
+    const challengeSnapshot = await get(challengeRef);
+    
+    if (!challengeSnapshot.exists()) {
+      throw new Error(`Challenge ${challengeId} not found`);
+    }
+    
+    const challenge = challengeSnapshot.val();
+    
+    const userChallengeRef = ref(db, `userChallenges/${userId}/${challengeId}`);
     await update(userChallengeRef, {
       status: 'completed',
       completedAt: Date.now(),
     });
 
     // Update user stats
-    const userRef = ref(this.db, `users/${userId}`);
+    const userRef = ref(db, `users/${userId}`);
     await update(userRef, {
-      'stats/challengesCompleted': increment(1),
-      'stats/totalPoints': increment(challenge.points),
-      lastLogin: Date.now(),
+      'stats/challengesCompleted': this.increment(1),
+      'stats/totalPoints': this.increment(challenge.points),
+      updatedAt: Date.now(),
     });
   }
 
   // Achievement Operations
   async getAchievements(): Promise<Achievement[]> {
-    const achievementsRef = ref(this.db, 'achievements');
+    const achievementsRef = ref(db, 'achievements');
     const snapshot = await get(achievementsRef);
     const achievements: Achievement[] = [];
     snapshot.forEach((childSnapshot) => {
@@ -160,7 +176,7 @@ export class DatabaseService {
   }
 
   async getUserAchievements(userId: string): Promise<UserAchievement[]> {
-    const userAchievementsRef = ref(this.db, `userAchievements/${userId}`);
+    const userAchievementsRef = ref(db, `userAchievements/${userId}`);
     const snapshot = await get(userAchievementsRef);
     const achievements: UserAchievement[] = [];
     snapshot.forEach((childSnapshot) => {
@@ -170,7 +186,17 @@ export class DatabaseService {
   }
 
   async unlockAchievement(userId: string, achievementId: string): Promise<void> {
-    const userAchievementRef = ref(this.db, `userAchievements/${userId}/${achievementId}`);
+    // First get the achievement details to get the points
+    const achievementRef = ref(db, `achievements/${achievementId}`);
+    const achievementSnapshot = await get(achievementRef);
+    
+    if (!achievementSnapshot.exists()) {
+      throw new Error(`Achievement ${achievementId} not found`);
+    }
+    
+    const achievement = achievementSnapshot.val();
+    
+    const userAchievementRef = ref(db, `userAchievements/${userId}/${achievementId}`);
     await set(userAchievementRef, {
       userId,
       achievementId,
@@ -178,15 +204,15 @@ export class DatabaseService {
     });
 
     // Update user stats
-    const userRef = ref(this.db, `users/${userId}`);
+    const userRef = ref(db, `users/${userId}`);
     await update(userRef, {
-      'stats/totalPoints': increment(achievement.points),
+      'stats/totalPoints': this.increment(achievement.points),
     });
   }
 
   // Helper function for incrementing values
   private increment(value: number) {
-    return increment(value);
+    return firebaseIncrement(value);
   }
 }
 

@@ -4,10 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { GoogleFitConnect } from "@/components/google-fit-connect";
+import { Button } from "@/components/ui/button";
 import { toast } from 'sonner';
 import { Progress } from "@/components/ui/progress";
-import { Trophy, Activity, Timer, Heart, Footprints, Flame } from "lucide-react";
+import { Trophy, Activity, Timer, Footprints, Flame } from "lucide-react";
 import { useGoogleFit } from '@/contexts/GoogleFitContext';
 
 interface Challenge {
@@ -25,58 +25,30 @@ interface FitnessData {
   distance: number;
   calories: number;
   activeMinutes: number;
-  heartRate?: number;
 }
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { isConnected, getFitnessData, isLoading } = useGoogleFit();
+  const { isConnected, connectGoogleFit, getFitnessData, isLoading: isGoogleFitLoading } = useGoogleFit();
   const router = useRouter();
+  const [fitnessDataLoaded, setFitnessDataLoaded] = useState(false);
+  const [fetchingData, setFetchingData] = useState(false);
   const [fitnessData, setFitnessData] = useState<FitnessData>({
     steps: 0,
     distance: 0,
     calories: 0,
-    activeMinutes: 0,
-    heartRate: 0
+    activeMinutes: 0
   });
   const [activeChallenges, setActiveChallenges] = useState<Challenge[]>([]);
-  const [isLoadingData, setIsLoadingData] = useState(false);
 
+  // Only fetch fitness data when explicitly connected
   useEffect(() => {
-    if (!user) {
-      router.push('/signin');
+    if (isConnected && !fitnessDataLoaded) {
+      fetchFitnessData();
     }
-  }, [user, router]);
+  }, [isConnected, fitnessDataLoaded]);
 
-  // Fetch fitness data when connected
-  useEffect(() => {
-    const fetchFitnessData = async () => {
-      if (isConnected) {
-        try {
-          setIsLoadingData(true);
-          const endTime = new Date();
-          const startTime = new Date();
-          startTime.setHours(0, 0, 0, 0); // Start of today
-
-          const data = await getFitnessData(startTime, endTime);
-          setFitnessData(data);
-          toast.success('Fitness data updated');
-        } catch (error) {
-          console.error('Error fetching fitness data:', error);
-          toast.error('Failed to fetch fitness data');
-        } finally {
-          setIsLoadingData(false);
-        }
-      }
-    };
-
-    fetchFitnessData();
-    // Set up interval to fetch data every 30 minutes
-    const interval = setInterval(fetchFitnessData, 30 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [isConnected, getFitnessData]);
-
-  // Mock data for active challenges (keep this for now)
+  // Set up mock challenges
   useEffect(() => {
     if (user) {
       setActiveChallenges([
@@ -102,25 +74,61 @@ export default function DashboardPage() {
     }
   }, [user, fitnessData]);
 
+  const fetchFitnessData = async () => {
+    if (!isConnected) return;
+    
+    setFetchingData(true);
+    try {
+      const endTime = new Date();
+      const startTime = new Date();
+      startTime.setHours(0, 0, 0, 0); // Start of today
+
+      const data = await getFitnessData(startTime, endTime);
+      setFitnessData(data);
+      setFitnessDataLoaded(true);
+      toast.success('Fitness data updated', {
+        description: 'Your latest fitness data has been loaded'
+      });
+    } catch (error) {
+      console.error('Error fetching fitness data:', error);
+      toast.error('Failed to fetch fitness data');
+    } finally {
+      setFetchingData(false);
+    }
+  };
+
+  const handleConnectGoogleFit = async () => {
+    try {
+      await connectGoogleFit();
+    } catch (error) {
+      console.error('Failed to connect to Google Fit:', error);
+      toast.error('Failed to connect to Google Fit');
+    }
+  };
+
   if (!user) return null;
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Fitness Tracking</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground mb-4">
-            {isConnected 
-              ? "Your fitness data is being tracked through Google Fit."
-              : "Connect your Google Fit account to track your fitness progress and participate in challenges."}
-          </p>
-          <GoogleFitConnect />
-        </CardContent>
-      </Card>
-
-      {isConnected && (
+      {!isConnected ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Connect to Google Fit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Connect your Google Fit account to track your fitness progress and participate in challenges.
+            </p>
+            <Button 
+              onClick={handleConnectGoogleFit} 
+              className="w-full"
+              disabled={isGoogleFitLoading}
+            >
+              {isGoogleFitLoading ? 'Connecting...' : 'Connect Google Fit'}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
         <>
           {/* Fitness Stats */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -135,7 +143,6 @@ export default function DashboardPage() {
                 <Progress value={(fitnessData.steps / 10000) * 100} className="mt-2" />
               </CardContent>
             </Card>
-
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Distance</CardTitle>
@@ -147,7 +154,6 @@ export default function DashboardPage() {
                 <Progress value={(fitnessData.distance / 5) * 100} className="mt-2" />
               </CardContent>
             </Card>
-
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Active Minutes</CardTitle>
@@ -159,7 +165,6 @@ export default function DashboardPage() {
                 <Progress value={(fitnessData.activeMinutes / 30) * 100} className="mt-2" />
               </CardContent>
             </Card>
-
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Calories</CardTitle>
@@ -171,6 +176,18 @@ export default function DashboardPage() {
                 <Progress value={(fitnessData.calories / 2000) * 100} className="mt-2" />
               </CardContent>
             </Card>
+          </div>
+
+          {/* Refresh button and loading state */}
+          <div className="flex justify-end">
+            <Button 
+              variant="outline" 
+              onClick={fetchFitnessData}
+              disabled={fetchingData}
+              size="sm"
+            >
+              {fetchingData ? 'Refreshing...' : 'Refresh Fitness Data'}
+            </Button>
           </div>
 
           {/* Active Challenges */}
