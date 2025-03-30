@@ -78,6 +78,8 @@ export interface ChallengeFormData {
     percentage: number;
   }[];
   tags: string[];
+  createdBy: string;
+  creatorWallet: string;
 }
 
 export interface UserChallengeProgress {
@@ -108,13 +110,17 @@ class ChallengeService {
   /**
    * Create a new challenge
    */
-  async createChallenge(challengeData: Omit<Challenge, 'id' | 'createdAt' | 'updatedAt' | 'currentParticipants'>): Promise<string> {
+  async createChallenge(challengeData: ChallengeFormData): Promise<string> {
     try {
       const db = this.getDatabase();
       // Generate a new ID for the challenge
       const challengesRef = ref(db, 'challenges');
       const newChallengeRef = push(challengesRef);
       const challengeId = newChallengeRef.key as string;
+      
+      // Parse dates from string to timestamps
+      const startDate = new Date(challengeData.startDate).getTime();
+      const deadline = new Date(challengeData.deadline).getTime();
       
       // Create the challenge object
       const challenge: Challenge = {
@@ -123,6 +129,14 @@ class ChallengeService {
         currentParticipants: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        isActive: true,
+        isCancelled: false,
+        startDate,
+        deadline,
+        criteria: {
+          target: challengeData.goal.target,
+          unit: challengeData.goal.unit
+        }
       };
       
       // Convert SOL to lamports for blockchain interaction
@@ -136,8 +150,8 @@ class ChallengeService {
         entryFeeLamports,
         prizePoolLamports,
         challenge.maxParticipants,
-        challenge.startDate,
-        challenge.deadline
+        startDate,
+        deadline
       );
       
       // Add the contract address to the challenge data
@@ -256,14 +270,17 @@ class ChallengeService {
       
       // Join the challenge on the Solana blockchain
       try {
+        // Get the Phantom provider
+        const provider = window.phantom?.solana;
+        if (!provider) {
+          throw new Error('Phantom wallet not found');
+        }
+        
         // Initialize the Solana client with the user's wallet
         await solanaClient.initializeProgram({
           publicKey: new PublicKey(walletAddress),
-          // Note: The signTransaction and signAllTransactions would come from the 
-          // wallet provider (e.g., Phantom) in the browser. Here we're just supporting
-          // the interface for testing/development.
-          signTransaction: async (tx) => tx,
-          signAllTransactions: async (txs) => txs,
+          signTransaction: async (tx) => provider.signTransaction(tx),
+          signAllTransactions: async (txs) => provider.signAllTransactions(txs),
         });
         
         // Call the joinChallenge method on the Solana contract

@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
-import { useAuthContext, User } from '@/contexts/AuthContext';
+import { useState, useCallback, useEffect } from 'react';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useWallet } from '@/contexts/WalletContext';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +9,16 @@ import { challengeService } from '@/lib/challengeService';
 import { solanaClient } from '@/lib/solanaClient';
 import { userService } from '@/lib/userService';
 import { toast } from 'sonner';
+import { PublicKey } from '@solana/web3.js';
+
+// Declare the Phantom provider type for TypeScript
+declare global {
+  interface Window {
+    phantom?: {
+      solana?: any;
+    };
+  }
+}
 
 interface JoinChallengeButtonProps {
   challengeId: string;
@@ -25,6 +36,7 @@ export default function JoinChallengeButton({
   onSuccess
 }: JoinChallengeButtonProps) {
   const { user } = useAuthContext();
+  const { isConnected, connectWallet, publicKey } = useWallet();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -46,12 +58,26 @@ export default function JoinChallengeButton({
         throw new Error('You must be logged in to join a challenge');
       }
       
-      if (!user?.walletAddress) {
-        throw new Error('You must connect your Solana wallet before joining challenges');
+      // Check if wallet is connected, connect if not
+      if (!isConnected) {
+        await connectWallet();
+        if (!isConnected || !publicKey) {
+          throw new Error('Failed to connect wallet');
+        }
       }
       
+      // Get the public key from the provider
+      const walletPublicKey = new PublicKey(publicKey);
+      
+      // Initialize the Solana program
+      await solanaClient.initializeProgram({
+        publicKey: walletPublicKey,
+        signTransaction: window.phantom?.solana?.signTransaction,
+        signAllTransactions: window.phantom?.solana?.signAllTransactions,
+      });
+      
       // Call the challenge service to join the challenge
-      await challengeService.joinChallenge(user.id, challengeId, user.walletAddress);
+      await challengeService.joinChallenge(user.id, challengeId, publicKey);
       
       // Mark as success
       setIsSuccess(true);
@@ -71,7 +97,7 @@ export default function JoinChallengeButton({
     } finally {
       setLoading(false);
     }
-  }, [user, challengeId, title, toast, onSuccess]);
+  }, [user, challengeId, title, connectWallet, isConnected, publicKey, onSuccess]);
   
   const closeDialog = useCallback(() => {
     setShowDialog(false);
@@ -91,7 +117,7 @@ export default function JoinChallengeButton({
     <>
       <Button 
         onClick={handleJoinClick}
-        disabled={isDisabled || loading || !user.walletAddress}
+        disabled={isDisabled || loading}
         className="w-full"
       >
         Join Challenge
@@ -124,12 +150,13 @@ export default function JoinChallengeButton({
             </Alert>
           ) : (
             <>
-              {!user.walletAddress && (
+              {!isConnected && (
                 <Alert variant="warning" className="my-4">
                   <ExclamationTriangleIcon className="h-4 w-4" />
                   <AlertTitle>Wallet Required</AlertTitle>
                   <AlertDescription>
                     You need to connect your Solana wallet before joining this challenge.
+                    Please use the wallet connect button in the header to connect your wallet.
                   </AlertDescription>
                 </Alert>
               )}
@@ -150,7 +177,7 @@ export default function JoinChallengeButton({
                 </Button>
                 <Button 
                   onClick={handleJoinChallenge} 
-                  disabled={loading || !user.walletAddress}
+                  disabled={loading}
                 >
                   {loading ? "Processing..." : "Confirm & Pay"}
                 </Button>

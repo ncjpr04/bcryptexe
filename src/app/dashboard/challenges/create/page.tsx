@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { ArrowLeft, Plus, Trash2, Calendar, Info } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Calendar, Info, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +30,10 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useAuth } from '@/contexts/AuthContext';
+import { useWallet } from '@/contexts/WalletContext';
 import { challengeService, ChallengeFormData } from '@/lib/challengeService';
+import { solanaClient } from '@/lib/solanaClient';
+import { PublicKey } from '@solana/web3.js';
 
 // Input validation schema using Zod
 const formSchema = z.object({
@@ -83,6 +86,7 @@ const unitsByGoalType: Record<string, string[]> = {
 export default function CreateChallengePage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
+  const { isConnected, publicKey } = useWallet();
   const [tagInput, setTagInput] = useState("");
   
   // Initialize form with defaults
@@ -213,14 +217,35 @@ export default function CreateChallengePage() {
       return;
     }
     
+    if (!isConnected || !publicKey) {
+      toast.error("You must connect your Solana wallet to create a challenge");
+      return;
+    }
+    
     try {
+      // Initialize the Solana program with the wallet
+      const provider = window.phantom?.solana;
+      if (!provider) {
+        toast.error("Phantom wallet not found");
+        return;
+      }
+      
+      // Initialize the Solana program
+      await solanaClient.initializeProgram({
+        publicKey: new PublicKey(publicKey),
+        signTransaction: async (tx) => provider.signTransaction(tx),
+        signAllTransactions: async (txs) => provider.signAllTransactions(txs),
+      });
+      
       // Format the data for Firebase
       const challengeData: ChallengeFormData = {
-        ...values
+        ...values,
+        createdBy: user.id,
+        creatorWallet: publicKey
       };
       
       // Save to Firebase
-      const challengeId = await challengeService.createChallenge(user.id, challengeData);
+      const challengeId = await challengeService.createChallenge(challengeData);
       
       toast.success("Challenge created successfully!");
       router.push(`/dashboard/challenges/available`);
@@ -674,6 +699,47 @@ export default function CreateChallengePage() {
               </div>
             </CardContent>
           </Card>
+          
+          <div className="flex items-center gap-2 my-6">
+            <div className="flex items-center gap-2">
+              <Wallet className={`h-4 w-4 ${isConnected ? 'text-green-500' : 'text-red-500'}`} />
+              <span className="text-sm">
+                {isConnected ? 
+                  <span className="text-green-500">Wallet Connected: {publicKey && publicKey.slice(0, 6)}...{publicKey && publicKey.slice(-4)}</span> : 
+                  <span className="text-red-500">Wallet Not Connected</span>
+                }
+              </span>
+            </div>
+            
+            <Button 
+              type="button" 
+              variant="outline" 
+              size="sm"
+              onClick={async () => {
+                try {
+                  const provider = window.phantom?.solana;
+                  if (!provider) {
+                    toast.error("Phantom wallet not found");
+                    return;
+                  }
+                  
+                  // Initialize the Solana program
+                  await solanaClient.initializeProgram({
+                    publicKey: new PublicKey(publicKey || ''),
+                    signTransaction: async (tx) => provider.signTransaction(tx),
+                    signAllTransactions: async (txs) => provider.signAllTransactions(txs),
+                  });
+                  
+                  toast.success("Solana program initialized successfully");
+                } catch (error) {
+                  console.error("Error initializing Solana program:", error);
+                  toast.error("Failed to initialize Solana program");
+                }
+              }}
+            >
+              Test Solana Connection
+            </Button>
+          </div>
           
           <div className="flex justify-end gap-4">
             <Button type="button" variant="outline" onClick={() => router.back()}>

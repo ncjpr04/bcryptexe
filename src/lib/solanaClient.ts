@@ -1,126 +1,15 @@
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
-import { Program, AnchorProvider, web3, BN, Wallet } from '@project-serum/anchor';
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair, Signer } from '@solana/web3.js';
+import { Program, AnchorProvider, web3, BN } from '@project-serum/anchor';
 import { userService } from './userService';
 import { database } from './database';
-import { ref, set, get } from 'firebase/database';
-
-// Instead of importing the IDL, define it inline
-const idl = {
-  "version": "0.1.0",
-  "name": "fitness_challenges",
-  "instructions": [
-    {
-      "name": "createChallenge",
-      "accounts": [
-        {
-          "name": "challenge",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "creator",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "systemProgram",
-          "isMut": false,
-          "isSigner": false
-        }
-      ],
-      "args": [
-        {
-          "name": "title",
-          "type": "string"
-        },
-        {
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "name": "entryFee",
-          "type": "u64"
-        },
-        {
-          "name": "startDate",
-          "type": "i64"
-        },
-        {
-          "name": "endDate",
-          "type": "i64"
-        }
-      ]
-    },
-    {
-      "name": "joinChallenge",
-      "accounts": [
-        {
-          "name": "challenge",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "participant",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "systemProgram",
-          "isMut": false,
-          "isSigner": false
-        }
-      ],
-      "args": []
-    }
-  ],
-  "accounts": [
-    {
-      "name": "Challenge",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "creator",
-            "type": "publicKey"
-          },
-          {
-            "name": "title",
-            "type": "string"
-          },
-          {
-            "name": "description",
-            "type": "string"
-          },
-          {
-            "name": "entryFee",
-            "type": "u64"
-          },
-          {
-            "name": "startDate",
-            "type": "i64"
-          },
-          {
-            "name": "endDate",
-            "type": "i64"
-          },
-          {
-            "name": "participants",
-            "type": {
-              "vec": "publicKey"
-            }
-          },
-          {
-            "name": "prizePool",
-            "type": "u64"
-          }
-        ]
-      }
-    }
-  ]
-};
+import { ref, set, get, update } from 'firebase/database';
+import * as idlJson from './idl/idl.json';
+import { getFirebaseDatabase } from './firebase';
 
 // The program ID from our deployed contract
-const PROGRAM_ID = new PublicKey('Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS');
+const PROGRAM_ID = new PublicKey(
+  process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID || 'Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS'
+);
 
 // Types
 export interface SolanaChallenge {
@@ -136,6 +25,13 @@ export interface SolanaChallenge {
   isCancelled: boolean;
   creator: string; // Public key as string
   publicKey: string; // PDA public key as string
+}
+
+// Types for our wallet adapter
+export interface Wallet {
+  publicKey: PublicKey;
+  signTransaction(tx: Transaction): Promise<Transaction>;
+  signAllTransactions(txs: Transaction[]): Promise<Transaction[]>;
 }
 
 // Convert from raw account data to our type
@@ -177,22 +73,33 @@ class SolanaClient {
         return null;
       }
 
+      // Check if the program ID is the placeholder
+      if (PROGRAM_ID.toString() === 'Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS') {
+        console.warn('Using placeholder program ID. This will not work with a real Solana program.');
+        console.warn('Please set NEXT_PUBLIC_SOLANA_PROGRAM_ID environment variable to your deployed program ID.');
+      }
+
       this.wallet = wallet;
       
+      // Create AnchorProvider with our wallet
       const provider = new AnchorProvider(
         this.connection,
         wallet,
         { preflightCommitment: 'processed' }
       );
       
-      // @ts-ignore - we know the IDL is valid
-      this.program = new Program(idl, PROGRAM_ID, provider);
+      // Use the imported IDL
+      this.program = new Program(
+        idlJson as any, 
+        PROGRAM_ID, 
+        provider
+      );
       
-      console.log('Solana program initialized successfully');
+      console.log('Solana program initialized successfully with ID:', PROGRAM_ID.toString());
       return this.program;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error initializing Solana program:', error);
-      return null;
+      throw new Error(`Failed to initialize Solana program: ${error.message}`);
     }
   }
 
@@ -209,6 +116,33 @@ class SolanaClient {
     try {
       if (!this.program || !this.wallet) {
         throw new Error('Program not initialized');
+      }
+
+      // For development/testing only - bypass blockchain call if using placeholder program ID
+      if (PROGRAM_ID.toString() === 'Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS') {
+        console.warn('Using placeholder program ID - bypassing actual blockchain transaction');
+        
+        // Generate a mock challenge PDA
+        const challengePda = Keypair.generate().publicKey;
+        const mockTx = 'mock_tx_' + Date.now();
+        
+        // Save the challenge data to Firebase
+        await this.syncChallengeToFirebase(challengeId, {
+          id: challengeId,
+          title,
+          entryFee,
+          prizePool,
+          maxParticipants,
+          currentParticipants: 0,
+          deadline: deadlineTimestamp,
+          startDate: startTimestamp,
+          isActive: true,
+          isCancelled: false,
+          creator: this.wallet.publicKey.toString(),
+          publicKey: challengePda.toString()
+        });
+        
+        return { signature: mockTx, challengeAddress: challengePda.toString() };
       }
 
       // Derive the challenge PDA
@@ -361,60 +295,144 @@ class SolanaClient {
     }
   }
 
-  // Save challenge data to Firebase (for easier querying and displaying in the UI)
+  // Sync challenge data to Firebase
   private async syncChallengeToFirebase(challengeId: string, challengeData: SolanaChallenge) {
     try {
-      const challengeRef = ref(database, `challenges/${challengeId}`);
-      await set(challengeRef, challengeData);
+      if (typeof window === 'undefined') {
+        console.warn('Cannot sync to Firebase from server side');
+        return;
+      }
+      
+      const db = getFirebaseDatabase();
+      if (!db) {
+        console.error('Firebase database not initialized');
+        return;
+      }
+      
+      const challengeRef = ref(db, `challenges/${challengeId}`);
+      await update(challengeRef, challengeData);
       console.log(`Challenge ${challengeId} synced to Firebase`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error syncing challenge to Firebase:', error);
     }
   }
 
-  // Add challenge to user's active challenges in Firebase
+  // Add challenge to user profile
   private async addChallengeToUserProfile(userId: string, challengeId: string, walletAddress: string) {
     try {
-      // Get user profile
-      const user = await userService.getUserById(userId);
-      
-      if (!user) {
-        throw new Error(`User ${userId} not found`);
-      }
+      // Get current timestamp
+      const now = Date.now();
       
       // Update user's active challenges
-      const activeChallenges = user.activeChallenges || {};
-      activeChallenges[challengeId] = {
-        joinedAt: Date.now(),
-        walletAddress,
-        status: 'active'
-      };
+      await userService.updateUser(userId, {
+        activeChallenges: {
+          [challengeId]: {
+            joinedAt: now,
+            walletAddress,
+            status: 'active',
+            progress: 0
+          }
+        }
+      });
       
-      // Update the user profile
-      await userService.updateUser(userId, { activeChallenges });
-      
-      console.log(`Challenge ${challengeId} added to user ${userId}'s profile`);
-    } catch (error) {
+      console.log(`Challenge ${challengeId} added to user ${userId} profile`);
+    } catch (error: any) {
       console.error('Error adding challenge to user profile:', error);
+      throw error;
     }
   }
 
-  // Update the participants count in Firebase
+  // Update challenge participants count
   private async updateChallengeParticipantsCount(challengeId: string) {
     try {
-      // Get the current challenge from Firebase
-      const challengeRef = ref(database, `challenges/${challengeId}`);
-      const snapshot = await get(challengeRef);
+      if (typeof window === 'undefined') {
+        console.warn('Cannot update Firebase from server side');
+        return;
+      }
       
+      const db = getFirebaseDatabase();
+      if (!db) {
+        console.error('Firebase database not initialized');
+        return;
+      }
+      
+      const challengeRef = ref(db, `challenges/${challengeId}`);
+      
+      // Get current challenge data
+      const snapshot = await get(challengeRef);
+      if (snapshot.exists()) {
+        const challengeData = snapshot.val();
+        
+        // Increment participants count
+        await update(challengeRef, {
+          currentParticipants: (challengeData.currentParticipants || 0) + 1
+        });
+        
+        console.log(`Updated participants count for challenge ${challengeId}`);
+      }
+    } catch (error: any) {
+      console.error('Error updating challenge participants count:', error);
+      throw error;
+    }
+  }
+
+  // Complete a challenge (admin function)
+  async completeChallenge(challengeId: string, winnerPositions: string[]) {
+    try {
+      if (!this.program || !this.wallet) {
+        throw new Error('Program not initialized');
+      }
+
+      // Derive the challenge PDA
+      const [challengePda] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from('challenge'),
+          Buffer.from(challengeId),
+        ],
+        PROGRAM_ID
+      );
+
+      // Convert winner positions to PublicKeys
+      const winnerPublicKeys = winnerPositions.map(pos => new PublicKey(pos));
+
+      // Call the contract to complete the challenge
+      const tx = await this.program.methods
+        .completeChallenge(winnerPublicKeys)
+        .accounts({
+          challenge: challengePda,
+          creator: this.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log('Challenge completed with transaction signature:', tx);
+      
+      // Update the challenge in Firebase
+      if (typeof window === 'undefined') {
+        console.warn('Cannot update Firebase from server side');
+        return { signature: tx };
+      }
+      
+      const db = getFirebaseDatabase();
+      if (!db) {
+        console.error('Firebase database not initialized');
+        return { signature: tx };
+      }
+      
+      const challengeRef = ref(db, `challenges/${challengeId}`);
+      const snapshot = await get(challengeRef);
       if (snapshot.exists()) {
         const challenge = snapshot.val();
-        challenge.currentParticipants = (challenge.currentParticipants || 0) + 1;
+        challenge.isActive = false;
         
         // Update the challenge
         await set(challengeRef, challenge);
       }
-    } catch (error) {
-      console.error('Error updating challenge participants count:', error);
+      
+      return { signature: tx };
+    } catch (error: any) {
+      console.error('Error completing challenge:', error);
+      throw error;
     }
   }
 }
