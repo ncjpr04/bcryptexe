@@ -1,68 +1,51 @@
 "use client"
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Trophy, Clock, ArrowLeft, Target, 
-  Medal, Calendar, BarChart, Users,
-  ChevronRight, Timer
-} from "lucide-react";
+import { Trophy, Clock, ArrowLeft, Filter, Users, Coins, Target, Medal, Calendar, Loader2, BarChart } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-
-interface ActiveChallenge {
-  id: string;
-  title: string;
-  type: string;
-  difficulty: string;
-  progress: number;
-  target: number;
-  unit: string;
-  daysLeft: number;
-  totalDays: number;
-  prizePool: number;
-  currentRank: number;
-  totalParticipants: number;
-  deadline: string;
-}
-
-const activeChallengeDummy: ActiveChallenge[] = [
-  {
-    id: "1",
-    title: "30-Day Weight Loss Challenge",
-    type: "Weight Loss",
-    difficulty: "Intermediate",
-    progress: 3.2,
-    target: 5,
-    unit: "kg",
-    daysLeft: 15,
-    totalDays: 30,
-    prizePool: 200,
-    currentRank: 45,
-    totalParticipants: 234,
-    deadline: "2024-04-15"
-  },
-  {
-    id: "2",
-    title: "10K Steps Daily Sprint",
-    type: "Walking",
-    difficulty: "Beginner",
-    progress: 45000,
-    target: 70000,
-    unit: "steps",
-    daysLeft: 3,
-    totalDays: 7,
-    prizePool: 20,
-    currentRank: 123,
-    totalParticipants: 567,
-    deadline: "2024-04-10"
-  }
-];
+import { useAuth } from '@/contexts/AuthContext';
+import { challengeService, Challenge } from '@/lib/challengeService';
+import { toast } from 'sonner';
 
 export default function ActiveChallengesPage() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch challenges from Firebase
+  useEffect(() => {
+    const fetchChallenges = async () => {
+      if (!isAuthenticated || !user) {
+        // Redirect to sign in if not authenticated
+        router.push('/signin');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const activeChallenges = await challengeService.getChallengesJoinedByUser(user.id);
+        // Sort challenges by start date, most recent first
+        const sortedChallenges = activeChallenges.sort((a, b) => {
+          return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+        });
+        setChallenges(sortedChallenges);
+      } catch (error) {
+        console.error('Error fetching active challenges:', error);
+        toast.error('Failed to load your active challenges');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchChallenges();
+  }, [user, isAuthenticated, router]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -72,9 +55,33 @@ export default function ActiveChallengesPage() {
     });
   };
 
+  // Calculate days remaining in challenge
+  const getDaysRemaining = (startDate: string, duration: number) => {
+    const start = new Date(startDate).getTime();
+    const end = start + (duration * 24 * 60 * 60 * 1000);
+    const now = Date.now();
+    
+    if (now < start) {
+      return "Not started";
+    }
+    
+    const daysRemaining = Math.ceil((end - now) / (24 * 60 * 60 * 1000));
+    
+    if (daysRemaining <= 0) {
+      return "Ended";
+    }
+    
+    return `${daysRemaining} days left`;
+  };
+
+  // Generate random progress for demo purposes
+  // In a real app, this would come from user tracking data
+  const getRandomProgress = () => {
+    return Math.floor(Math.random() * 100);
+  };
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      {/* Header */}
+    <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard/challenges')}>
@@ -82,155 +89,142 @@ export default function ActiveChallengesPage() {
           </Button>
           <h1 className="text-3xl font-bold tracking-tight">Active Challenges</h1>
         </div>
-        <Button variant="outline" className="gap-2">
-          <BarChart className="h-4 w-4" />
-          View Stats
+        <Button onClick={() => router.push('/dashboard/challenges/available')}>
+          Find New Challenges
         </Button>
       </div>
+      
+      <p className="text-muted-foreground">
+        Track your progress in challenges you've joined
+      </p>
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-2 text-lg">Loading your challenges...</span>
+        </div>
+      )}
+
+      {/* No Challenges State */}
+      {!isLoading && challenges.length === 0 && (
+        <div className="text-center py-16 border rounded-lg border-dashed">
+          <h3 className="text-lg font-medium mb-2">No active challenges</h3>
+          <p className="text-muted-foreground mb-4">
+            You haven't joined any challenges yet. Explore available challenges to get started.
+          </p>
+          <Button onClick={() => router.push('/dashboard/challenges/available')}>
+            Browse Challenges
+          </Button>
+        </div>
+      )}
 
       {/* Challenge Cards */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {activeChallengeDummy.map((challenge) => (
-          <Card 
-            key={challenge.id} 
-            className="overflow-hidden hover:shadow-lg transition-all duration-300 group"
-          >
-            {/* Card Header */}
-            <div className="p-4 border-b">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="rounded-full bg-primary/10 text-primary border-primary/20">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {challenges.map((challenge) => {
+          const progress = getRandomProgress(); // In a real app, get actual progress
+          
+          return (
+            <Card key={challenge.id} className="flex flex-col h-full">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <Badge 
+                      variant="outline" 
+                      className={cn(
+                        "mb-2",
+                        challenge.difficulty === "Beginner" && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 border-green-200 dark:border-green-800",
+                        challenge.difficulty === "Intermediate" && "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 border-blue-200 dark:border-blue-800",
+                        challenge.difficulty === "Advanced" && "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 border-purple-200 dark:border-purple-800"
+                      )}
+                    >
+                      {challenge.difficulty}
+                    </Badge>
+                    <CardTitle className="text-xl">{challenge.title}</CardTitle>
+                  </div>
+                  <Badge className="px-2 py-1">
                     {challenge.type}
                   </Badge>
-                  <Badge 
-                    className={cn(
-                      "rounded-full",
-                      challenge.difficulty === "Beginner" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
-                      challenge.difficulty === "Intermediate" && "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400",
-                      challenge.difficulty === "Advanced" && "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"
-                    )}
-                  >
-                    {challenge.difficulty}
+                </div>
+                <CardDescription className="line-clamp-2 mt-1">
+                  {challenge.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-0 flex-grow space-y-4">
+                {/* Time Info */}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center">
+                    <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <span className="text-sm">{challenge.duration} days</span>
+                  </div>
+                  <Badge variant="outline">
+                    {getDaysRemaining(challenge.startDate, challenge.duration)}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10">
-                  <Trophy className="h-4 w-4 text-primary" />
-                  <span className="font-semibold text-primary">{challenge.prizePool} SOL</span>
-                </div>
-              </div>
-              <h3 className="text-lg font-semibold line-clamp-1">{challenge.title}</h3>
-            </div>
-
-            {/* Card Body */}
-            <div className="p-4 space-y-4">
-              {/* Progress Section */}
-              <div className="grid grid-cols-2 gap-4">
-                {/* Goal Progress */}
+                
+                <Separator />
+                
+                {/* Progress */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Target className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">Progress</span>
+                    <div className="flex items-center">
+                      <BarChart className="h-4 w-4 mr-2 text-primary" />
+                      <span className="font-semibold">Your Progress</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round((challenge.progress / challenge.target) * 100)}%
+                    <span className="text-sm font-medium">{progress}%</span>
+                  </div>
+                  <Progress value={progress} className="h-2" />
+                </div>
+                
+                {/* Goal Info */}
+                <div className="bg-muted p-3 rounded-md">
+                  <div className="flex items-center mb-2">
+                    <Target className="h-4 w-4 mr-2 text-primary" />
+                    <span className="font-semibold">Challenge Goal</span>
+                  </div>
+                  <p className="text-center font-medium">
+                    {challenge.goal.target} {challenge.goal.unit} {challenge.goal.type}
+                  </p>
+                  <div className="mt-2 text-sm text-center text-muted-foreground">
+                    <span>Current: </span>
+                    <span className="font-medium">
+                      {Math.round(challenge.goal.target * progress / 100)} {challenge.goal.unit}
                     </span>
+                    <span> of {challenge.goal.target} {challenge.goal.unit}</span>
                   </div>
-                  <Progress 
-                    value={(challenge.progress / challenge.target) * 100} 
-                    className="h-2 rounded-full"
-                  />
-                  <div className="text-xs text-muted-foreground text-center">
-                    {challenge.progress} / {challenge.target} {challenge.unit}
+                </div>
+                
+                {/* Prize Info */}
+                <div>
+                  <div className="flex items-center mb-2">
+                    <Trophy className="h-4 w-4 mr-2 text-primary" />
+                    <span className="font-semibold">Prize Pool</span>
+                    <span className="ml-auto font-medium">{challenge.prizePool} SOL</span>
+                  </div>
+                </div>
+                
+                {/* Dates */}
+                <div className="text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Started:</span>
+                    <span>{formatDate(challenge.startDate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Ends:</span>
+                    <span>{formatDate(new Date(new Date(challenge.startDate).getTime() + challenge.duration * 24 * 60 * 60 * 1000).toISOString())}</span>
                   </div>
                 </div>
 
-                {/* Time Progress */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Timer className="h-4 w-4 text-rose-500" />
-                      <span className="text-sm font-medium">Time Left</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round((challenge.daysLeft / challenge.totalDays) * 100)}%
-                    </span>
-                  </div>
-                  <Progress 
-                    value={((challenge.totalDays - challenge.daysLeft) / challenge.totalDays) * 100}
-                    className="h-2 rounded-full bg-rose-100 dark:bg-rose-500/20"
-                  />
-                  <div className="text-xs text-muted-foreground text-center">
-                    {challenge.daysLeft} days left
-                  </div>
-                </div>
-              </div>
-
-              {/* Stats Row */}
-              <div className="grid grid-cols-3 gap-2 p-2 rounded-xl bg-muted/50">
-                <div className="text-center p-2 rounded-lg bg-amber-100/50 dark:bg-amber-500/20">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Medal className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="text-xs font-medium">Rank</span>
-                  </div>
-                  <div className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                    #{challenge.currentRank}
-                  </div>
-                </div>
-                <div className="text-center p-2">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs font-medium">Total</span>
-                  </div>
-                  <div className="text-sm font-semibold">
-                    {challenge.totalParticipants}
-                  </div>
-                </div>
-                <div className="text-center p-2">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs font-medium">Days</span>
-                  </div>
-                  <div className="text-sm font-semibold">
-                    {challenge.daysLeft}/{challenge.totalDays}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Card Footer */}
-            <div className="px-4 pb-4">
-              <Button 
-                className="w-full rounded-full gap-2 text-sm h-9"
-                variant="outline"
-                onClick={() => router.push(`/dashboard/challenges/active/${challenge.id}`)}
-              >
-                View Details
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </Card>
-        ))}
+              </CardContent>
+              <CardFooter className="pt-4 mt-auto">
+                <Button className="w-full" variant="outline">
+                  View Challenge Details
+                </Button>
+              </CardFooter>
+            </Card>
+          );
+        })}
       </div>
-
-      {/* Empty State */}
-      {activeChallengeDummy.length === 0 && (
-        <Card className="p-12 text-center">
-          <div className="flex flex-col items-center gap-4">
-            <Trophy className="h-12 w-12 text-muted-foreground" />
-            <h3 className="text-xl font-semibold">No Active Challenges</h3>
-            <p className="text-muted-foreground max-w-sm">
-              You haven't joined any challenges yet. Browse available challenges to get started.
-            </p>
-            <Button 
-              onClick={() => router.push('/dashboard/challenges/available')}
-              className="mt-2"
-            >
-              Browse Challenges
-            </Button>
-          </div>
-        </Card>
-      )}
     </div>
   );
 } 

@@ -1,0 +1,159 @@
+{
+  "rules": {
+    "users": {
+      "$userId": {
+        // Allow read access only to the authenticated user for their own data
+        ".read": "$userId === auth.uid",
+        
+        // Allow write access only to the authenticated user for their own data
+        ".write": "$userId === auth.uid",
+        
+        // Validate the user data structure
+        ".validate": "newData.hasChildren(['id', 'name', 'email', 'picture', 'lastLogin', 'createdAt', 'updatedAt'])",
+        
+        "id": {
+          ".validate": "newData.val() === $userId"
+        },
+        
+        "name": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        
+        "email": {
+          ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$/i)"
+        },
+        
+        "picture": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        
+        "googleFitToken": {
+          ".validate": "newData.isString() || newData.val() === null"
+        },
+        
+        "lastLogin": {
+          ".validate": "newData.isNumber()"
+        },
+        
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        
+        "updatedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        
+        "preferences": {
+          ".validate": "newData.hasChildren() || newData.val() === null",
+          "theme": {
+            ".validate": "newData.isString() || !newData.exists()"
+          },
+          "notifications": {
+            ".validate": "newData.isBoolean() || !newData.exists()"
+          },
+          "language": {
+            ".validate": "newData.isString() || !newData.exists()"
+          }
+        },
+        
+        "stats": {
+          ".validate": "newData.hasChildren() || newData.val() === null",
+          "workoutsCompleted": {
+            ".validate": "newData.isNumber() || !newData.exists()"
+          },
+          "challengesCompleted": {
+            ".validate": "newData.isNumber() || !newData.exists()"
+          },
+          "achievementsUnlocked": {
+            ".validate": "newData.isNumber() || !newData.exists()"
+          },
+          "totalPoints": {
+            ".validate": "newData.isNumber() || !newData.exists()"
+          }
+        }
+      }
+    },
+    
+    "userChallenges": {
+      "$userId": {
+        // Allow read access only to the authenticated user for their own challenges
+        ".read": "$userId === auth.uid",
+        
+        // Allow write access only to the authenticated user for their own challenges
+        ".write": "$userId === auth.uid",
+        
+        "$challengeId": {
+          ".validate": "newData.hasChildren(['userId', 'challengeId', 'status', 'progress'])",
+          
+          "userId": {
+            ".validate": "newData.val() === $userId"
+          },
+          
+          "challengeId": {
+            ".validate": "newData.val() === $challengeId"
+          },
+          
+          "status": {
+            ".validate": "newData.isString() && newData.val().matches(/^(pending|completed|failed)$/)"
+          },
+          
+          "progress": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          
+          "completedAt": {
+            ".validate": "newData.isNumber() || !newData.exists()"
+          }
+        }
+      }
+    },
+    
+    "userAchievements": {
+      "$userId": {
+        // Allow read access only to the authenticated user for their own achievements
+        ".read": "$userId === auth.uid",
+        
+        // Allow write access only to the authenticated user for their own achievements
+        ".write": "$userId === auth.uid",
+        
+        "$achievementId": {
+          ".validate": "newData.hasChildren(['userId', 'achievementId', 'unlockedAt'])",
+          
+          "userId": {
+            ".validate": "newData.val() === $userId"
+          },
+          
+          "achievementId": {
+            ".validate": "newData.val() === $achievementId"
+          },
+          
+          "unlockedAt": {
+            ".validate": "newData.isNumber()"
+          }
+        }
+      }
+    },
+    
+    "challenges": {
+      // Anyone can read challenges
+      ".read": true,
+      
+      // Only admin can create/update challenges (implement admin check in your serverless functions)
+      ".write": false
+    },
+    
+    "achievements": {
+      // Anyone can read achievements
+      ".read": true,
+      
+      // Only admin can create/update achievements (implement admin check in your serverless functions)
+      ".write": false
+    },
+    
+    // Default deny all other paths
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+} 

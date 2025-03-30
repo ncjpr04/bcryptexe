@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import Cookies from 'js-cookie'
 import { googleFit } from '@/lib/googleFit'
+import { userService } from '@/lib/userService'
 
 export interface User {
   id: string
@@ -95,7 +96,12 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
       }
     }
 
-    checkAuth()
+    // Only run on client side
+    if (typeof window !== 'undefined') {
+      checkAuth()
+    } else {
+      setIsLoading(false) // Not loading on server side
+    }
   }, [])
 
   const login = useGoogleLogin({
@@ -122,11 +128,29 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
           accessToken: tokenResponse.access_token
         }
 
+        // Save user data to state and cookies/localStorage
         setUser(userData)
         setIsAuthenticated(true)
         
         // Set cookie with user data (expires in 7 days)
         Cookies.set('user', JSON.stringify(userData), { expires: 7 })
+        
+        // Store user data in Firebase Realtime Database using the userService
+        try {
+          await userService.saveUser({
+            id: userData.id,
+            name: userData.name,
+            email: userData.email,
+            picture: userData.picture
+            // Don't store accessToken in Firebase for security reasons
+          });
+          console.log('User saved to Firebase Realtime Database');
+        } catch (error) {
+          console.error('Error saving user to Firebase:', error)
+          // Continue the login process even if Firebase storage fails
+          // We don't want to block login if the database operation fails
+        }
+        
         toast.success('Successfully signed in')
         router.push('/dashboard')
       } catch (error) {

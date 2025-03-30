@@ -7,6 +7,9 @@ interface FitnessData {
   activeMinutes: number
 }
 
+// Check if we're on the client side
+const isClient = typeof window !== 'undefined';
+
 export class GoogleFitService {
   private static instance: GoogleFitService
   private accessToken: string | null = null
@@ -21,12 +24,34 @@ export class GoogleFitService {
   }
 
   setAccessToken(token: string | null) {
-    this.accessToken = token
+    // Only set token on client side
+    if (isClient) {
+      this.accessToken = token
+      
+      // Optionally store in localStorage for persistence
+      if (token) {
+        localStorage.setItem('google_fit_token', token)
+      } else {
+        localStorage.removeItem('google_fit_token')
+      }
+    }
   }
 
   async getFitnessData(startTime: Date, endTime: Date): Promise<FitnessData> {
+    // Ensure we're on client side
+    if (!isClient) {
+      console.error('Cannot access Google Fit on server side')
+      return { steps: 0, distance: 0, calories: 0, activeMinutes: 0 }
+    }
+    
     if (!this.accessToken) {
-      throw new Error('Not authenticated with Google Fit')
+      // Try to recover token from localStorage
+      const storedToken = localStorage.getItem('google_fit_token')
+      if (storedToken) {
+        this.accessToken = storedToken
+      } else {
+        throw new Error('Not authenticated with Google Fit')
+      }
     }
 
     try {
@@ -105,6 +130,10 @@ export class GoogleFitService {
 
   // Helper method to fetch a single data type
   private async fetchSingleDataType(dataTypeName: string, startTime: Date, endTime: Date): Promise<any> {
+    if (!isClient || !this.accessToken) {
+      return {}; // Empty result if not on client or no token
+    }
+    
     const response = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
       method: 'POST',
       headers: {
@@ -186,7 +215,8 @@ export class GoogleFitService {
   }
 }
 
-export const googleFit = GoogleFitService.getInstance()
+// Only create instance on client side
+export const googleFit = isClient ? GoogleFitService.getInstance() : {} as GoogleFitService;
 
 // Add type definitions for the global gapi object
 declare global {

@@ -1,10 +1,9 @@
-import { initializeApp } from 'firebase/app';
-import { getDatabase } from 'firebase/database';
+import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { getDatabase, Database } from 'firebase/database';
 
-// Ensure we're on the client side
-if (typeof window === 'undefined') {
-  throw new Error('Firebase must be initialized on the client side');
-}
+// Define types for our exports
+let app: FirebaseApp | undefined;
+let database: Database | undefined;
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -16,42 +15,64 @@ const firebaseConfig = {
   databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
 };
 
-// Log configuration status (without sensitive values)
-console.log('Firebase Configuration Status:', {
-  apiKey: firebaseConfig.apiKey ? 'Present' : 'Missing',
-  authDomain: firebaseConfig.authDomain ? 'Present' : 'Missing',
-  projectId: firebaseConfig.projectId ? 'Present' : 'Missing',
-  storageBucket: firebaseConfig.storageBucket ? 'Present' : 'Missing',
-  messagingSenderId: firebaseConfig.messagingSenderId ? 'Present' : 'Missing',
-  appId: firebaseConfig.appId ? 'Present' : 'Missing',
-  databaseURL: firebaseConfig.databaseURL ? 'Present' : 'Missing'
-});
-
-// Validate configuration
-if (typeof window !== 'undefined') {
-  const missingFields = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'databaseURL']
-    .filter(field => !firebaseConfig[field]);
-
-  if (missingFields.length > 0) {
-    throw new Error(`Missing required Firebase configuration fields: ${missingFields.join(', ')}`);
+// Initialize Firebase only on the client side
+function initializeFirebase() {
+  if (typeof window === 'undefined') {
+    // Return empty objects when in server environment
+    return { app: undefined, database: undefined };
   }
-}
 
-let app;
-let database;
-
-if (typeof window !== 'undefined') {
   try {
-    // Initialize Firebase
-    app = initializeApp(firebaseConfig);
+    // Log configuration status (without sensitive values)
+    console.log('Firebase Configuration Status:', {
+      apiKey: firebaseConfig.apiKey ? 'Present' : 'Missing',
+      authDomain: firebaseConfig.authDomain ? 'Present' : 'Missing',
+      projectId: firebaseConfig.projectId ? 'Present' : 'Missing',
+      storageBucket: firebaseConfig.storageBucket ? 'Present' : 'Missing',
+      messagingSenderId: firebaseConfig.messagingSenderId ? 'Present' : 'Missing',
+      appId: firebaseConfig.appId ? 'Present' : 'Missing',
+      databaseURL: firebaseConfig.databaseURL ? 'Present' : 'Missing'
+    });
     
-    // Initialize Realtime Database
-    database = getDatabase(app);
+    // Validate database URL
+    if (!firebaseConfig.databaseURL) {
+      console.error('Missing required Firebase Realtime Database URL');
+      return { app: undefined, database: undefined };
+    }
     
-    console.log('Firebase initialized with database URL:', process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL);
+    // Initialize Firebase only once
+    if (!app) {
+      app = initializeApp(firebaseConfig);
+      database = getDatabase(app);
+      console.log('Firebase Realtime Database initialized with URL:', process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL);
+    }
+    
+    return { app, database };
   } catch (error) {
     console.error('Firebase initialization error:', error);
+    return { app: undefined, database: undefined };
   }
 }
 
-export { app, database }; 
+// Initialize Firebase if we're on the client side
+if (typeof window !== 'undefined') {
+  const { app: initializedApp, database: initializedDatabase } = initializeFirebase();
+  app = initializedApp;
+  database = initializedDatabase;
+}
+
+export { app, database };
+
+// Helper function to get database instance when needed (client-side only)
+export function getFirebaseDatabase() {
+  if (typeof window === 'undefined') {
+    throw new Error('getFirebaseDatabase can only be called on the client side');
+  }
+  
+  if (!database) {
+    const { database: initializedDatabase } = initializeFirebase();
+    database = initializedDatabase;
+  }
+  
+  return database;
+} 

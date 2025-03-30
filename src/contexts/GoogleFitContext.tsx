@@ -1,10 +1,10 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { useGoogleLogin } from '@react-oauth/google'
 import { googleFit } from '@/lib/googleFit'
 import { useAuth } from './AuthContext'
-import { database } from '@/lib/database'
+import { userService } from '@/lib/userService'
 import { toast } from 'sonner'
 
 interface GoogleFitContextType {
@@ -22,6 +22,18 @@ export function GoogleFitProviderContent({ children }: { children: React.ReactNo
   const [isLoading, setIsLoading] = useState(false)
   const { user } = useAuth()
 
+  // Check if Google Fit is connected on mount (client-side only)
+  useEffect(() => {
+    // Only run on client side
+    if (typeof window !== 'undefined') {
+      const storedToken = localStorage.getItem('google_fit_token')
+      if (storedToken) {
+        googleFit.setAccessToken(storedToken)
+        setIsConnected(true)
+      }
+    }
+  }, [])
+
   const login = useGoogleLogin({
     scope: [
       'https://www.googleapis.com/auth/fitness.activity.read',
@@ -36,7 +48,7 @@ export function GoogleFitProviderContent({ children }: { children: React.ReactNo
         
         if (user) {
           try {
-            await database.updateUserProfile(user.id, {
+            await userService.updateUser(user.id, {
               googleFitToken: tokenResponse.access_token
             })
           } catch (error) {
@@ -78,7 +90,7 @@ export function GoogleFitProviderContent({ children }: { children: React.ReactNo
       
       // Update database in the background
       if (user) {
-        database.updateUserProfile(user.id, {
+        userService.updateUser(user.id, {
           googleFitToken: null
         }).catch(error => {
           console.error('Failed to update user profile:', error)
@@ -95,6 +107,16 @@ export function GoogleFitProviderContent({ children }: { children: React.ReactNo
   }
 
   const getFitnessData = useCallback(async (startTime: Date, endTime: Date) => {
+    if (typeof window === 'undefined') {
+      console.error('Cannot fetch fitness data on server side')
+      return {
+        steps: 0,
+        distance: 0,
+        calories: 0,
+        activeMinutes: 0
+      }
+    }
+    
     try {
       return await googleFit.getFitnessData(startTime, endTime)
     } catch (error) {

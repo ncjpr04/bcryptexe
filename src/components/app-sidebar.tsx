@@ -56,6 +56,10 @@ const data = {
           url: "/dashboard/challenges/available",
         },
         {
+          title: "Create Challenges",
+          url: "/dashboard/challenges/create",
+        },
+        {
           title: "My Challenges",
           url: "/dashboard/challenges/active",
         },
