@@ -37,7 +37,6 @@ export default function AvailableChallengesPage() {
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [durationFilter, setDurationFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [joiningChallenge, setJoiningChallenge] = useState<string | null>(null);
 
   // Fetch challenges from Firebase
   useEffect(() => {
@@ -94,8 +93,17 @@ export default function AvailableChallengesPage() {
     setFilteredChallenges(result);
   }, [challenges, difficultyFilter, durationFilter, typeFilter]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+  const formatDate = (dateString: string | number) => {
+    // Handle both string and number formats
+    const date = typeof dateString === 'string' ? new Date(dateString) : new Date(dateString);
+    
+    // Make sure it's a valid date
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date:', dateString);
+      return 'Invalid date';
+    }
+    
+    return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -104,38 +112,6 @@ export default function AvailableChallengesPage() {
 
   // Get all unique challenge types
   const uniqueTypes = Array.from(new Set(challenges.map(challenge => challenge.type)));
-
-  // Function to join a challenge
-  const handleJoinChallenge = async (challengeId: string) => {
-    if (!isAuthenticated || !user) {
-      toast.error('You must be logged in to join a challenge');
-      return;
-    }
-
-    setJoiningChallenge(challengeId);
-    try {
-      await challengeService.joinChallenge(challengeId, user.id);
-      
-      // Update the challenge in the state to reflect new participant count
-      setChallenges(prev => 
-        prev.map(challenge => 
-          challenge.id === challengeId 
-            ? { ...challenge, currentParticipants: challenge.currentParticipants + 1 } 
-            : challenge
-        )
-      );
-      
-      toast.success('Successfully joined the challenge!');
-      
-      // Navigate to active challenges
-      router.push('/dashboard/challenges/active');
-    } catch (error: any) {
-      console.error('Error joining challenge:', error);
-      toast.error(error.message || 'Failed to join challenge');
-    } finally {
-      setJoiningChallenge(null);
-    }
-  };
 
   const isUserJoinedChallenge = (challengeId: string) => {
     return user?.activeChallenges && !!user.activeChallenges[challengeId];
@@ -291,7 +267,19 @@ export default function AvailableChallengesPage() {
                     challengeId={challenge.id}
                     title={challenge.title}
                     entryFee={challenge.entryFee}
-                    onSuccess={() => handleJoinChallenge(challenge.id)}
+                    onSuccess={() => {
+                      // Update the challenge in the state to reflect new participant count
+                      setChallenges(prev => 
+                        prev.map(c => 
+                          c.id === challenge.id 
+                            ? { ...c, currentParticipants: c.currentParticipants + 1 } 
+                            : c
+                        )
+                      );
+                      
+                      // Navigate to active challenges
+                      router.push('/dashboard/challenges/active');
+                    }}
                     isDisabled={!isConnected}
                   />
                 )}

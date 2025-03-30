@@ -16,10 +16,14 @@ export interface Challenge {
   prizePool: number;
   maxParticipants: number;
   currentParticipants: number;
-  deadline: string;
-  startDate: string;
+  deadline: number; // UNIX timestamp
+  startDate: number; // UNIX timestamp
   createdBy: string; // User ID of creator
+  creatorWallet: string; // Wallet address of creator
   createdAt: number; // Timestamp
+  updatedAt: number; // Timestamp
+  isActive: boolean;
+  isCancelled: boolean;
   goal: {
     type: string;
     target: number;
@@ -31,28 +35,10 @@ export interface Challenge {
     percentage: number;
   }[];
   tags: string[];
-  entryFee: number; // In SOL (will be converted to lamports for blockchain)
-  prizePool: number; // In SOL (will be converted to lamports for blockchain)
-  prizes: {
-    [position: string]: number; // Position (1st, 2nd, 3rd) -> prize amount in SOL
-  };
-  startDate: number; // UNIX timestamp
-  endDate: number; // UNIX timestamp
-  deadline: number; // UNIX timestamp for joining
-  difficulty: 'easy' | 'medium' | 'hard' | 'expert';
-  type: 'steps' | 'distance' | 'calories' | 'workouts';
   criteria: {
     target: number; // Target value (e.g., 10000 steps)
     unit: string; // Unit (e.g., 'steps', 'km', 'kcal', 'workouts')
   };
-  maxParticipants: number;
-  currentParticipants: number;
-  createdBy: string; // User ID
-  creatorWallet: string; // Wallet address
-  isActive: boolean;
-  isCancelled: boolean;
-  rules: string[];
-  updatedAt: number;
   contractAddress?: string; // Solana contract address
 }
 
@@ -121,6 +107,14 @@ class ChallengeService {
       // Parse dates from string to timestamps
       const startDate = new Date(challengeData.startDate).getTime();
       const deadline = new Date(challengeData.deadline).getTime();
+      
+      console.log('Creating challenge with dates:', {
+        startDateString: challengeData.startDate,
+        deadlineString: challengeData.deadline,
+        startTimestamp: startDate,
+        deadlineTimestamp: deadline,
+        now: Date.now()
+      });
       
       // Create the challenge object
       const challenge: Challenge = {
@@ -247,13 +241,60 @@ class ChallengeService {
       
       // Check if the challenge is still open
       const now = Date.now();
-      if (
-        !challenge.isActive ||
-        challenge.isCancelled ||
-        challenge.deadline < now ||
-        challenge.currentParticipants >= challenge.maxParticipants
-      ) {
-        throw new Error('Challenge is no longer available for joining');
+      
+      // Log detailed information about the challenge
+      console.log('Challenge joining details:', {
+        challengeId,
+        title: challenge.title,
+        isActive: challenge.isActive || true, // Default to true if missing
+        isCancelled: challenge.isCancelled || false, // Default to false if missing
+        deadline: challenge.deadline,
+        deadlineType: typeof challenge.deadline,
+        now,
+        currentParticipants: challenge.currentParticipants,
+        maxParticipants: challenge.maxParticipants,
+        userId,
+        walletAddress
+      });
+
+      // Ensure isActive and isCancelled fields exist with defaults if needed
+      if (challenge.isActive === undefined) {
+        challenge.isActive = true;
+        // Since we're fixing this at runtime, also update it in the database
+        await update(ref(db, `challenges/${challengeId}`), { isActive: true });
+      }
+      
+      if (challenge.isCancelled === undefined) {
+        challenge.isCancelled = false;
+        // Since we're fixing this at runtime, also update it in the database
+        await update(ref(db, `challenges/${challengeId}`), { isCancelled: false });
+      }
+      
+      // First convert deadline to number if it's a string (which can happen when saved to Firebase)
+      let deadlineTimestamp: number;
+      if (typeof challenge.deadline === 'string') {
+        deadlineTimestamp = new Date(challenge.deadline).getTime();
+        // Update in database for future calls
+        await update(ref(db, `challenges/${challengeId}`), { deadline: deadlineTimestamp });
+      } else {
+        deadlineTimestamp = challenge.deadline;
+      }
+      
+      // Now check all conditions
+      if (!challenge.isActive) {
+        throw new Error('Challenge is no longer active');
+      }
+      
+      if (challenge.isCancelled) {
+        throw new Error('Challenge has been cancelled');
+      }
+      
+      if (deadlineTimestamp < now) {
+        throw new Error('Registration deadline has passed for this challenge');
+      }
+      
+      if (challenge.currentParticipants >= challenge.maxParticipants) {
+        throw new Error('Challenge has reached maximum number of participants');
       }
       
       // Get the user
@@ -287,8 +328,26 @@ class ChallengeService {
         const result = await solanaClient.joinChallenge(challengeId, userId);
         console.log(`User ${userId} joined challenge ${challengeId} on blockchain with tx: ${result.signature}`);
         
-        // The solanaClient.joinChallenge already updates the user profile and challenge data in Firebase
-        // so we don't need to do that here, but we'll create the progress entry
+        // Let's manually update the user's active challenges and the challenge participants count
+        // in case solanaClient.joinChallenge doesn't do it properly
+        
+        // Update user's active challenges
+        await userService.updateUser(userId, {
+          activeChallenges: {
+            ...user.activeChallenges,
+            [challengeId]: {
+              joinedAt: now,
+              walletAddress,
+              status: 'active',
+              progress: 0
+            }
+          }
+        });
+        
+        // Update challenge participants count
+        await update(ref(db, `challenges/${challengeId}`), {
+          currentParticipants: (challenge.currentParticipants || 0) + 1
+        });
 
         // Create initial progress entry
         await this.createChallengeProgress({
@@ -304,7 +363,7 @@ class ChallengeService {
         });
 
         return true;
-      } catch (blockchainError) {
+      } catch (blockchainError: any) {
         console.error('Error joining challenge on blockchain:', blockchainError);
         throw new Error(`Failed to join challenge on blockchain: ${blockchainError.message}`);
       }

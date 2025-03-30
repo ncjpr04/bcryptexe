@@ -66,6 +66,14 @@ export default function JoinChallengeButton({
         }
       }
       
+      // Log details before proceeding
+      console.log('Join Challenge Parameters:', {
+        userId: user.id,
+        challengeId,
+        publicKey,
+        isConnected
+      });
+      
       // Get the public key from the provider
       const walletPublicKey = new PublicKey(publicKey);
       
