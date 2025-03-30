@@ -68,21 +68,7 @@ const data = {
     {
       title: "Earnings & Wallet",
       url: "/dashboard/earnings",
-      icon: Wallet,
-      items: [
-        {
-          title: "Earnings Dashboard",
-          url: "/dashboard/earnings/overview",
-        },
-        {
-          title: "Withdraw Crypto",
-          url: "/dashboard/earnings/withdraw",
-        },
-        {
-          title: "Stake & Deposit",
-          url: "/dashboard/earnings/stake",
-        },
-      ],
+      icon: Wallet
     },
     {
       title: "Leaderboard",

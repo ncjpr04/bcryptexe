@@ -1,6 +1,6 @@
 "use client";
 
-import heroImage from "../../public/images/hero-image-01.jpg";
+import heroImage from "../../public/images/heroImage.jpeg";
 // import ModalVideo from "../components/modal-video";
 import Image from "next/image";
 import Logo from "../components/ui/logo";
