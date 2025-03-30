@@ -14,6 +14,7 @@ export interface User {
   email: string
   picture: string
   accessToken: string
+  walletAddress?: string
 }
 
 interface AuthContextType {
@@ -251,6 +252,15 @@ export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
+}
+
+// Add this function to make it compatible with the join-challenge-button component
+export function useAuthContext() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuthContext must be used within an AuthProvider')
   }
   return context
 } 

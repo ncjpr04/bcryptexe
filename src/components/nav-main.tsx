@@ -45,7 +45,7 @@ export function NavMain({
                 defaultOpen={item.isActive}
                 className="group/collapsible"
               >
-                <>
+                <div className="w-full">
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton tooltip={item.title}>
                       {item.icon && <item.icon />}
@@ -66,7 +66,7 @@ export function NavMain({
                       ))}
                     </SidebarMenuSub>
                   </CollapsibleContent>
-                </>
+                </div>
               </Collapsible>
             ) : (
               // If no subitems, render as direct link

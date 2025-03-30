@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
 import { useAuth } from '@/contexts/AuthContext';
 import { challengeService, Challenge } from '@/lib/challengeService';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SolanaWalletConnect from '@/components/solana-wallet-connect';
+import JoinChallengeButton from '@/components/join-challenge-button';
 
 export default function AvailableChallengesPage() {
   const router = useRouter();
@@ -134,246 +137,184 @@ export default function AvailableChallengesPage() {
     }
   };
 
+  const isUserJoinedChallenge = (challengeId: string) => {
+    return user?.activeChallenges && !!user.activeChallenges[challengeId];
+  };
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard/challenges')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-3xl font-bold tracking-tight">Available Challenges</h1>
-        </div>
-        <Button onClick={() => router.push('/dashboard/challenges/create')}>
-          Create Challenge
-        </Button>
-      </div>
+    <div className="container py-6">
+      <h1 className="text-3xl font-bold mb-6">Available Challenges</h1>
       
-      <p className="text-muted-foreground">
-        Browse and join new fitness challenges to earn rewards
-      </p>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-2">
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Filter by:</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Select defaultValue="all" onValueChange={setDifficultyFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Difficulty" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Difficulties</SelectItem>
-              <SelectItem value="beginner">Beginner</SelectItem>
-              <SelectItem value="intermediate">Intermediate</SelectItem>
-              <SelectItem value="advanced">Advanced</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select defaultValue="all" onValueChange={setDurationFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Duration" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Durations</SelectItem>
-              <SelectItem value="short">Short (≤ 7 days)</SelectItem>
-              <SelectItem value="medium">Medium (8-30 days)</SelectItem>
-              <SelectItem value="long">Long (> 30 days)</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select defaultValue="all" onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {uniqueTypes.map(type => (
-                <SelectItem key={type} value={type.toLowerCase()}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2 text-lg">Loading challenges...</span>
-        </div>
-      )}
-
-      {/* No Challenges State */}
-      {!isLoading && filteredChallenges.length === 0 && (
-        <div className="text-center py-16 border rounded-lg border-dashed">
-          <h3 className="text-lg font-medium mb-2">No challenges found</h3>
-          <p className="text-muted-foreground mb-4">
-            {challenges.length === 0 
-              ? "There are no available challenges at the moment." 
-              : "No challenges match your current filters."}
-          </p>
-          {challenges.length === 0 ? (
-            <Button onClick={() => router.push('/dashboard/challenges/create')}>
-              Create the first challenge
-            </Button>
-          ) : (
-            <Button variant="outline" onClick={() => {
-              setDifficultyFilter('all');
-              setDurationFilter('all');
-              setTypeFilter('all');
-            }}>
-              Clear filters
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Challenge Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredChallenges.map((challenge) => (
-          <Card key={challenge.id} className="flex flex-col h-full">
-            <CardHeader className="pb-2">
-              <div className="flex justify-between items-start">
-                <div>
-                  <Badge 
-                    variant="outline" 
-                    className={cn(
-                      "mb-2",
-                      challenge.difficulty === "Beginner" && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 border-green-200 dark:border-green-800",
-                      challenge.difficulty === "Intermediate" && "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 border-blue-200 dark:border-blue-800",
-                      challenge.difficulty === "Advanced" && "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 border-purple-200 dark:border-purple-800"
-                    )}
-                  >
-                    {challenge.difficulty}
-                  </Badge>
-                  <CardTitle className="text-xl">{challenge.title}</CardTitle>
-                </div>
-                <Badge className="px-2 py-1">
-                  {challenge.type}
-                </Badge>
-              </div>
-              <CardDescription className="line-clamp-2 mt-1">
-                {challenge.description}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pb-0 flex-grow">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {/* Basic Info */}
-                <div className="flex items-center">
-                  <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <span>{challenge.duration} days</span>
-                </div>
-                <div className="flex items-center">
-                  <Users className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <span>{challenge.currentParticipants}/{challenge.maxParticipants}</span>
-                </div>
-                <div className="flex items-center">
-                  <Coins className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <span className="font-medium">{challenge.entryFee > 0 ? `${challenge.entryFee} SOL` : 'Free'}</span>
-                </div>
-                <div className="flex items-center">
-                  <Trophy className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <span className="font-medium">{challenge.prizePool} SOL</span>
-                </div>
-              </div>
-              
-              <Separator className="my-4" />
-              
-              {/* Goal Info */}
-              <div>
-                <div className="flex items-center mb-2">
-                  <Target className="h-4 w-4 mr-2 text-primary" />
-                  <span className="font-semibold">Goal</span>
-                </div>
-                <p className="text-center font-medium text-lg">
-                  {challenge.goal.target} {challenge.goal.unit} {challenge.goal.type}
-                </p>
-              </div>
-              
-              <Separator className="my-4" />
-              
-              {/* Time Info */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Registration Deadline:</span>
-                  <span className="font-medium">{formatDate(challenge.deadline)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Starts On:</span>
-                  <span className="font-medium">{formatDate(challenge.startDate)}</span>
-                </div>
-              </div>
-              
-              <Separator className="my-4" />
-              
-              {/* Prizes */}
-              <div>
-                <div className="flex items-center mb-2">
-                  <Medal className="h-4 w-4 mr-2 text-primary" />
-                  <span className="font-semibold">Prizes</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {challenge.prizes.slice(0, 3).map((prize, index) => (
-                    <TooltipProvider key={index}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className={cn(
-                            "text-center p-1 rounded",
-                            index === 0 && "bg-amber-100 dark:bg-amber-900/40",
-                            index === 1 && "bg-slate-100 dark:bg-slate-800/60",
-                            index === 2 && "bg-orange-100 dark:bg-orange-900/30"
-                          )}>
-                            <div className="font-medium">{prize.position}</div>
-                            <div className="text-sm font-semibold">{prize.amount} SOL</div>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{prize.percentage}% of prize pool</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+      <Tabs defaultValue="challenges" className="mb-8">
+        <TabsList className="mb-4">
+          <TabsTrigger value="challenges">Challenges</TabsTrigger>
+          <TabsTrigger value="wallet">Solana Wallet</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="wallet">
+          <div className="mb-8">
+            <SolanaWalletConnect />
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="challenges">
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">Difficulty</label>
+              <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Difficulties</SelectItem>
+                  <SelectItem value="beginner">Beginner</SelectItem>
+                  <SelectItem value="intermediate">Intermediate</SelectItem>
+                  <SelectItem value="advanced">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">Duration</label>
+              <Select value={durationFilter} onValueChange={setDurationFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by duration" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Durations</SelectItem>
+                  <SelectItem value="short">Short (≤ 7 days)</SelectItem>
+                  <SelectItem value="medium">Medium (8-30 days)</SelectItem>
+                  <SelectItem value="long">Long (> 30 days)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">Type</label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {uniqueTypes.map(type => (
+                    <SelectItem key={type} value={type.toLowerCase()}>{type}</SelectItem>
                   ))}
-                </div>
-                {challenge.prizes.length > 3 && (
-                  <div className="text-sm text-center mt-2 text-muted-foreground">
-                    + {challenge.prizes.length - 3} more positions
-                  </div>
-                )}
-              </div>
-
-              {/* Tags */}
-              <div className="flex flex-wrap gap-1 mt-4">
-                {challenge.tags.map((tag, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-            <CardFooter className="pt-4 mt-auto">
-              <Button 
-                className="w-full" 
-                onClick={() => handleJoinChallenge(challenge.id)}
-                disabled={
-                  joiningChallenge === challenge.id || 
-                  challenge.currentParticipants >= challenge.maxParticipants
-                }
-              >
-                {joiningChallenge === challenge.id ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Joining...
-                  </>
-                ) : challenge.currentParticipants >= challenge.maxParticipants ? (
-                  'Full'
-                ) : (
-                  'Join Challenge'
-                )}
-              </Button>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          {isLoading ? (
+            <div className="flex justify-center items-center h-60">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          ) : filteredChallenges.length === 0 ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-xl font-medium mb-2">No Challenges Found</h3>
+              <p className="text-muted-foreground">
+                There are no challenges matching your filters. Try adjusting your filters or check back later.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredChallenges.map((challenge) => (
+                <Card key={challenge.id} className="overflow-hidden">
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle>{challenge.title}</CardTitle>
+                        <CardDescription className="mt-2">
+                          {challenge.description.substring(0, 100)}
+                          {challenge.description.length > 100 ? '...' : ''}
+                        </CardDescription>
+                      </div>
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          "mb-2",
+                          challenge.difficulty === "Beginner" && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 border-green-200 dark:border-green-800",
+                          challenge.difficulty === "Intermediate" && "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 border-blue-200 dark:border-blue-800",
+                          challenge.difficulty === "Advanced" && "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 border-purple-200 dark:border-purple-800"
+                        )}
+                      >
+                        {challenge.difficulty}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <span>Deadline: {formatDate(challenge.deadline)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span>{challenge.currentParticipants}/{challenge.maxParticipants}</span>
+                        </div>
+                      </div>
+                      
+                      <Separator />
+                      
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Target:</h4>
+                        <p>
+                          {challenge.goal.target} {challenge.goal.unit} {challenge.goal.type}
+                        </p>
+                      </div>
+                      
+                      <Separator />
+                      
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <h4 className="font-medium text-sm">Entry Fee:</h4>
+                          <span className="font-medium">{challenge.entryFee > 0 ? `${challenge.entryFee} SOL` : 'Free'}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <h4 className="font-medium text-sm">Prize Pool:</h4>
+                          <span className="font-medium">{challenge.prizePool} SOL</span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Prizes:</h4>
+                        <div className="space-y-1">
+                          {challenge.prizes.slice(0, 3).map((prize, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <Trophy className="h-4 w-4 text-yellow-500" />
+                              <span>{prize.position} Place: {prize.amount} SOL</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                  
+                  <CardFooter>
+                    {!user ? (
+                      <Button disabled className="w-full">Login to Join</Button>
+                    ) : isUserJoinedChallenge(challenge.id) ? (
+                      <Button disabled className="w-full">Already Joined</Button>
+                    ) : (
+                      <JoinChallengeButton 
+                        challengeId={challenge.id}
+                        title={challenge.title}
+                        entryFee={challenge.entryFee}
+                        onSuccess={() => handleJoinChallenge(challenge.id)}
+                        isDisabled={!user.walletAddress}
+                      />
+                    )}
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 

@@ -5,19 +5,22 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Clock, ArrowLeft, Filter, Users, Coins, Target, Medal, Calendar, Loader2, BarChart } from "lucide-react";
+import { Trophy, Clock, ArrowLeft, Filter, Users, Coins, Target, Medal, Calendar, Loader2, BarChart, Alert, AlertDescription, AlertTitle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useAuth } from '@/contexts/AuthContext';
 import { challengeService, Challenge } from '@/lib/challengeService';
 import { toast } from 'sonner';
+import { AlertCircle, CheckCircle } from 'lucide-react';
+import { userService } from '@/lib/userService';
 
 export default function ActiveChallengesPage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch challenges from Firebase
   useEffect(() => {
@@ -30,7 +33,7 @@ export default function ActiveChallengesPage() {
 
       setIsLoading(true);
       try {
-        const activeChallenges = await challengeService.getChallengesJoinedByUser(user.id);
+        const activeChallenges = await challengeService.getUserActiveChallenges(user.id);
         // Sort challenges by start date, most recent first
         const sortedChallenges = activeChallenges.sort((a, b) => {
           return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
@@ -80,6 +83,18 @@ export default function ActiveChallengesPage() {
     return Math.floor(Math.random() * 100);
   };
 
+  if (!user) {
+    return (
+      <Alert className="max-w-md mx-auto my-8">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Authentication Required</AlertTitle>
+        <AlertDescription>
+          Please log in to view your active challenges.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
@@ -124,6 +139,10 @@ export default function ActiveChallengesPage() {
         {challenges.map((challenge) => {
           const progress = getRandomProgress(); // In a real app, get actual progress
           
+          // Get user's progress for this challenge
+          const userProgress = user.activeChallenges?.[challenge.id]?.progress || 0;
+          const daysRemaining = getDaysRemaining(challenge.startDate, challenge.duration);
+          
           return (
             <Card key={challenge.id} className="flex flex-col h-full">
               <CardHeader className="pb-2">
@@ -158,7 +177,7 @@ export default function ActiveChallengesPage() {
                     <span className="text-sm">{challenge.duration} days</span>
                   </div>
                   <Badge variant="outline">
-                    {getDaysRemaining(challenge.startDate, challenge.duration)}
+                    {daysRemaining}
                   </Badge>
                 </div>
                 
@@ -171,9 +190,9 @@ export default function ActiveChallengesPage() {
                       <BarChart className="h-4 w-4 mr-2 text-primary" />
                       <span className="font-semibold">Your Progress</span>
                     </div>
-                    <span className="text-sm font-medium">{progress}%</span>
+                    <span className="text-sm font-medium">{userProgress}%</span>
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <Progress value={userProgress} className="h-2" />
                 </div>
                 
                 {/* Goal Info */}
@@ -188,7 +207,7 @@ export default function ActiveChallengesPage() {
                   <div className="mt-2 text-sm text-center text-muted-foreground">
                     <span>Current: </span>
                     <span className="font-medium">
-                      {Math.round(challenge.goal.target * progress / 100)} {challenge.goal.unit}
+                      {Math.round(challenge.goal.target * userProgress / 100)} {challenge.goal.unit}
                     </span>
                     <span> of {challenge.goal.target} {challenge.goal.unit}</span>
                   </div>
@@ -217,9 +236,19 @@ export default function ActiveChallengesPage() {
 
               </CardContent>
               <CardFooter className="pt-4 mt-auto">
-                <Button className="w-full" variant="outline">
-                  View Challenge Details
-                </Button>
+                {userProgress >= 100 ? (
+                  <Alert className="bg-green-50 border-green-200 text-green-800">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <AlertTitle>Challenge Completed!</AlertTitle>
+                    <AlertDescription>
+                      Congratulations! You've completed this challenge. Rewards will be distributed after the challenge ends.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Button className="w-full" variant="outline">
+                    View Challenge Details
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           );

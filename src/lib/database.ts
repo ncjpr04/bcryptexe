@@ -1,7 +1,8 @@
 import { getDatabase, ref, set, get, update, remove, push, query, orderByChild, equalTo, increment as firebaseIncrement } from 'firebase/database';
-import { app } from './firebase';
+import { getFirebaseDatabase } from './firebase';
 
-const db = getDatabase(app);
+// Don't initialize the database directly here
+// const db = getDatabase(app); // This line is causing issues
 
 export interface UserProfile {
   id: string;
@@ -55,8 +56,17 @@ export interface UserAchievement {
 }
 
 class DatabaseService {
+  // Add a method to safely get database instance
+  private getDb() {
+    if (typeof window === 'undefined') {
+      throw new Error('Database can only be accessed on the client side');
+    }
+    return getFirebaseDatabase();
+  }
+
   async createUserProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
     try {
+      const db = this.getDb();
       console.log('Creating user profile for:', userId);
       const now = Date.now();
       await set(ref(db, `users/${userId}`), {
@@ -72,6 +82,7 @@ class DatabaseService {
 
   async getUserProfile(userId: string): Promise<UserProfile | null> {
     try {
+      const db = this.getDb();
       console.log('Getting user profile for:', userId);
       const snapshot = await get(ref(db, `users/${userId}`));
       return snapshot.exists() ? snapshot.val() : null;
@@ -83,6 +94,7 @@ class DatabaseService {
 
   async updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
     try {
+      const db = this.getDb();
       console.log('Updating user profile for:', userId, 'with data:', data);
       const updates = {
         ...data,
@@ -97,6 +109,7 @@ class DatabaseService {
 
   // Challenge Operations
   async createChallenge(challenge: Omit<Challenge, 'id'>): Promise<string> {
+    const db = this.getDb();
     const challengesRef = ref(db, 'challenges');
     const newChallengeRef = push(challengesRef);
     const challengeWithId = {
@@ -108,6 +121,7 @@ class DatabaseService {
   }
 
   async getChallenges(type?: Challenge['type']): Promise<Challenge[]> {
+    const db = this.getDb();
     const challengesRef = ref(db, 'challenges');
     let challengesQuery = challengesRef;
     
@@ -124,6 +138,7 @@ class DatabaseService {
   }
 
   async getUserChallenges(userId: string): Promise<UserChallenge[]> {
+    const db = this.getDb();
     const userChallengesRef = ref(db, `userChallenges/${userId}`);
     const snapshot = await get(userChallengesRef);
     const challenges: UserChallenge[] = [];
@@ -134,11 +149,13 @@ class DatabaseService {
   }
 
   async updateChallengeProgress(userId: string, challengeId: string, progress: number): Promise<void> {
+    const db = this.getDb();
     const userChallengeRef = ref(db, `userChallenges/${userId}/${challengeId}`);
     await update(userChallengeRef, { progress });
   }
 
   async completeChallenge(userId: string, challengeId: string): Promise<void> {
+    const db = this.getDb();
     // First get the challenge details to get the points
     const challengeRef = ref(db, `challenges/${challengeId}`);
     const challengeSnapshot = await get(challengeRef);
@@ -166,6 +183,7 @@ class DatabaseService {
 
   // Achievement Operations
   async getAchievements(): Promise<Achievement[]> {
+    const db = this.getDb();
     const achievementsRef = ref(db, 'achievements');
     const snapshot = await get(achievementsRef);
     const achievements: Achievement[] = [];
@@ -176,6 +194,7 @@ class DatabaseService {
   }
 
   async getUserAchievements(userId: string): Promise<UserAchievement[]> {
+    const db = this.getDb();
     const userAchievementsRef = ref(db, `userAchievements/${userId}`);
     const snapshot = await get(userAchievementsRef);
     const achievements: UserAchievement[] = [];
@@ -186,6 +205,7 @@ class DatabaseService {
   }
 
   async unlockAchievement(userId: string, achievementId: string): Promise<void> {
+    const db = this.getDb();
     // First get the achievement details to get the points
     const achievementRef = ref(db, `achievements/${achievementId}`);
     const achievementSnapshot = await get(achievementRef);

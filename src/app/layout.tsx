@@ -33,7 +33,7 @@ export default function RootLayout({
             </AuthProvider>
           </GoogleOAuthProvider>
         </ThemeProvider>
-        <Toaster richColors position="top-right" />
+        <Toaster />
       </body>
     </html>
   );
