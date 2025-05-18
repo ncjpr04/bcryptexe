@@ -99,7 +99,7 @@ const data = {
       icon: Users,
       items: [
         {
-          title: "Social Challenges",
+          title: "Social",
           url: "/dashboard/community/social",
         },
         {
